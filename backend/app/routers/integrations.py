@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,7 @@ from app.config import settings
 from app.deps import get_current_user_id, get_db
 from app.models.integration import Integration
 from app.models.workspace import WorkspaceMember
+from app.services.jira import get_jira_projects
 from app.schemas.integration import IntegrationStatus
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,35 @@ async def _upsert_integration(
 
     await db.commit()
     return integration
+
+
+async def _get_integration(
+    db: AsyncSession, workspace_id: uuid.UUID, provider: str
+) -> Integration:
+    result = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id,
+            Integration.provider == provider,
+        )
+    )
+    integration = result.scalars().first()
+    if integration is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{provider.capitalize()} integration not connected",
+        )
+    return integration
+
+
+class IntegrationDefaultsRequest(BaseModel):
+    default_repo: str | None = None
+    default_jira_project_key: str | None = None
+
+
+class IntegrationDefaultsResponse(BaseModel):
+    default_repo: str | None = None
+    default_jira_project_key: str | None = None
+    jira_site_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +267,7 @@ async def jira_callback(
             detail="No accessible Jira sites found for this account",
         )
     cloud_id = resources[0]["id"]
+    site_url = resources[0].get("url")
 
     await _upsert_integration(
         db=db,
@@ -244,7 +276,7 @@ async def jira_callback(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_at=token_expires_at,
-        metadata_json={"cloud_id": cloud_id},
+        metadata_json={"cloud_id": cloud_id, "site_url": site_url},
     )
 
     return RedirectResponse(
@@ -299,3 +331,138 @@ async def disconnect_integration(
     if integration:
         await db.delete(integration)
         await db.commit()
+
+
+@router.get("/github/repos")
+async def github_repos(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace_id = await _get_user_workspace_id(user_id, db)
+    integration = await _get_integration(db, workspace_id, "github")
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            "https://api.github.com/user/repos",
+            headers={
+                "Authorization": f"Bearer {integration.access_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            params={"sort": "updated", "per_page": 30},
+        )
+        resp.raise_for_status()
+        repos = resp.json()
+
+    return [
+        {
+            "full_name": repo["full_name"],
+            "description": repo.get("description"),
+            "default_branch": repo.get("default_branch", "main"),
+        }
+        for repo in repos
+    ]
+
+
+@router.get("/jira/projects")
+async def jira_projects(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace_id = await _get_user_workspace_id(user_id, db)
+    integration = await _get_integration(db, workspace_id, "jira")
+
+    metadata = integration.metadata_json or {}
+    cloud_id = metadata.get("cloud_id")
+    if not cloud_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Jira cloud_id in integration metadata",
+        )
+
+    return await get_jira_projects(integration.access_token, cloud_id)
+
+
+@router.get("/defaults", response_model=IntegrationDefaultsResponse)
+async def get_integration_defaults(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace_id = await _get_user_workspace_id(user_id, db)
+
+    github = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id, Integration.provider == "github"
+        )
+    )
+    jira = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id, Integration.provider == "jira"
+        )
+    )
+    github_integration = github.scalars().first()
+    jira_integration = jira.scalars().first()
+
+    return IntegrationDefaultsResponse(
+        default_repo=(github_integration.metadata_json or {}).get("default_repo")
+        if github_integration
+        else None,
+        default_jira_project_key=(jira_integration.metadata_json or {}).get(
+            "default_project_key"
+        )
+        if jira_integration
+        else None,
+        jira_site_url=(jira_integration.metadata_json or {}).get("site_url")
+        if jira_integration
+        else None,
+    )
+
+
+@router.patch("/defaults", response_model=IntegrationDefaultsResponse)
+async def update_integration_defaults(
+    payload: IntegrationDefaultsRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace_id = await _get_user_workspace_id(user_id, db)
+
+    github_result = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id, Integration.provider == "github"
+        )
+    )
+    jira_result = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id, Integration.provider == "jira"
+        )
+    )
+    github_integration = github_result.scalars().first()
+    jira_integration = jira_result.scalars().first()
+
+    if payload.default_repo is not None and github_integration is not None:
+        github_meta = dict(github_integration.metadata_json or {})
+        github_meta["default_repo"] = payload.default_repo
+        github_integration.metadata_json = github_meta
+        github_integration.updated_at = datetime.now(timezone.utc)
+
+    if payload.default_jira_project_key is not None and jira_integration is not None:
+        jira_meta = dict(jira_integration.metadata_json or {})
+        jira_meta["default_project_key"] = payload.default_jira_project_key
+        jira_integration.metadata_json = jira_meta
+        jira_integration.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return IntegrationDefaultsResponse(
+        default_repo=(github_integration.metadata_json or {}).get("default_repo")
+        if github_integration
+        else None,
+        default_jira_project_key=(jira_integration.metadata_json or {}).get(
+            "default_project_key"
+        )
+        if jira_integration
+        else None,
+        jira_site_url=(jira_integration.metadata_json or {}).get("site_url")
+        if jira_integration
+        else None,
+    )
