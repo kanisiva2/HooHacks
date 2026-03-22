@@ -61,12 +61,12 @@ export default function DashboardPage() {
             </section>
 
             <section className="grid gap-3 md:grid-cols-3">
-              <Button render={<Link href="/incidents" />}>Start or view incidents</Button>
-              <Button variant="outline" render={<Link href="/integrations" />}>
+              <Button nativeButton={false} render={<Link href="/incidents" />}>Start or view incidents</Button>
+              <Button nativeButton={false} variant="outline" render={<Link href="/integrations" />}>
                 Manage integrations
               </Button>
               {incidentsQuery.data?.[0] ? (
-                <Button variant="outline" render={<Link href={`/incidents/${incidentsQuery.data[0].id}`} />}>
+                <Button nativeButton={false} variant="outline" render={<Link href={`/incidents/${incidentsQuery.data[0].id}`} />}>
                   Rejoin latest room ({formatRelativeTime(incidentsQuery.data[0].created_at)})
                 </Button>
               ) : null}

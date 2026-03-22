@@ -14,20 +14,30 @@ import {
   useIntegrationStatus,
 } from "@/hooks/useIntegrations";
 import { usePrimaryWorkspace } from "@/hooks/useWorkspaces";
+import { api } from "@/lib/api";
 
 function IntegrationCard({
   provider,
   connected,
-  connectHref,
+  connectPath,
   onDisconnect,
   disconnecting,
 }: {
   provider: "GitHub" | "Jira";
   connected: boolean;
-  connectHref: string;
+  connectPath: string;
   onDisconnect: () => void;
   disconnecting: boolean;
 }) {
+  const handleConnect = async () => {
+    try {
+      const resp = await api.get(connectPath);
+      window.location.href = resp.data.url;
+    } catch {
+      alert("Failed to start OAuth flow. Please try again.");
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -48,11 +58,7 @@ function IntegrationCard({
             Disconnect
           </Button>
         ) : (
-          <Button
-            onClick={() => {
-              window.location.href = connectHref;
-            }}
-          >
+          <Button onClick={handleConnect}>
             Connect
           </Button>
         )}
@@ -77,12 +83,12 @@ function IntegrationsPageContent() {
     return null;
   }, [searchParams]);
 
-  const githubHref = workspace
-    ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/integrations/github/connect?workspace_id=${workspace.id}`
-    : "#";
-  const jiraHref = workspace
-    ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/integrations/jira/connect?workspace_id=${workspace.id}`
-    : "#";
+  const githubPath = workspace
+    ? `/api/integrations/github/connect?workspace_id=${workspace.id}`
+    : "";
+  const jiraPath = workspace
+    ? `/api/integrations/jira/connect?workspace_id=${workspace.id}`
+    : "";
 
   return (
     <ProtectedPage>
@@ -108,14 +114,14 @@ function IntegrationsPageContent() {
               <IntegrationCard
                 provider="GitHub"
                 connected={statusQuery.data?.has_github ?? false}
-                connectHref={githubHref}
+                connectPath={githubPath}
                 onDisconnect={() => disconnectMutation.mutate("github")}
                 disconnecting={disconnectMutation.isPending}
               />
               <IntegrationCard
                 provider="Jira"
                 connected={statusQuery.data?.has_jira ?? false}
-                connectHref={jiraHref}
+                connectPath={jiraPath}
                 onDisconnect={() => disconnectMutation.mutate("jira")}
                 disconnecting={disconnectMutation.isPending}
               />

@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     s3_bucket_name: str
 
     # LLM
-    llm_provider: str = "anthropic"
-    anthropic_api_key: str
-    openai_api_key: str = ""  # Optional — only needed if using OpenAI as LLM provider
+    llm_provider: str = "gemini"
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
 
     # Skribby (Meeting Bot API)
     skribby_api_key: str

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -151,7 +151,7 @@ async def update_incident(
     if body.status is not None:
         incident.status = body.status
         if body.status in ("resolved", "closed") and incident.resolved_at is None:
-            incident.resolved_at = datetime.now(timezone.utc)
+            incident.resolved_at = datetime.utcnow()
         if body.status == "closed":
             # Cascade-close all open action items for this incident
             await db.execute(

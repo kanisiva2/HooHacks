@@ -18,10 +18,8 @@ import { useUIStore } from "@/stores/uiStore";
 export default function IncidentsPage() {
   const { workspace, isLoading: workspaceLoading } = usePrimaryWorkspace();
   const incidents = useIncidents(workspace?.id);
-  const { modals, setModalOpen } = useUIStore((state) => ({
-    modals: state.modals,
-    setModalOpen: state.setModalOpen,
-  }));
+  const modals = useUIStore((state) => state.modals);
+  const setModalOpen = useUIStore((state) => state.setModalOpen);
 
   const sortedIncidents = useMemo(
     () =>

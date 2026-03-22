@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDeepDiveResults } from "@/hooks/useDeepDive";
 import { useIncident, useIncidents } from "@/hooks/useIncident";
 import { useIncidentSocket } from "@/hooks/useIncidentSocket";
 import { useTasks } from "@/hooks/useTasks";
@@ -31,8 +32,10 @@ export default function IncidentRoomPage() {
   const incident = useIncident(incidentId);
   const incidents = useIncidents(workspace?.id);
   const tasksQuery = useTasks(incidentId);
+  const deepDiveQuery = useDeepDiveResults(incidentId);
   const suspectFiles = useIncidentStore((store) => store.suspectFiles);
   const upsertActionItem = useIncidentStore((store) => store.upsertActionItem);
+  const setSuspectFiles = useIncidentStore((store) => store.setSuspectFiles);
 
   useIncidentSocket(incidentId);
 
@@ -42,6 +45,12 @@ export default function IncidentRoomPage() {
     }
     tasksQuery.data.forEach((item) => upsertActionItem(item));
   }, [tasksQuery.data, upsertActionItem]);
+
+  useEffect(() => {
+    if (deepDiveQuery.data && deepDiveQuery.data.length > 0 && suspectFiles.length === 0) {
+      setSuspectFiles(deepDiveQuery.data);
+    }
+  }, [deepDiveQuery.data, suspectFiles.length, setSuspectFiles]);
 
   const topSuspects = useMemo(
     () => [...suspectFiles].sort((a, b) => a.rank - b.rank).slice(0, 3),

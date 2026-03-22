@@ -4,7 +4,7 @@ Integrations router — GitHub + Jira OAuth connect/callback flows, status, disc
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -117,7 +117,7 @@ async def _upsert_integration(
         integration.refresh_token = refresh_token
         integration.expires_at = expires_at
         integration.metadata_json = metadata_json or integration.metadata_json
-        integration.updated_at = datetime.now(timezone.utc)
+        integration.updated_at = datetime.utcnow()
     else:
         integration = Integration(
             workspace_id=workspace_id,
@@ -307,7 +307,7 @@ async def jira_callback(
     if not access_token:
         raise HTTPException(status_code=400, detail="Jira OAuth token exchange failed")
 
-    token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resources_resp = await client.get(
@@ -512,13 +512,13 @@ async def update_integration_defaults(
         github_meta = dict(github_integration.metadata_json or {})
         github_meta["default_repo"] = payload.default_repo
         github_integration.metadata_json = github_meta
-        github_integration.updated_at = datetime.now(timezone.utc)
+        github_integration.updated_at = datetime.utcnow()
 
     if payload.default_jira_project_key is not None and jira_integration is not None:
         jira_meta = dict(jira_integration.metadata_json or {})
         jira_meta["default_project_key"] = payload.default_jira_project_key
         jira_integration.metadata_json = jira_meta
-        jira_integration.updated_at = datetime.now(timezone.utc)
+        jira_integration.updated_at = datetime.utcnow()
 
     await db.commit()
 
@@ -563,7 +563,7 @@ async def update_integration_settings(
 
     integration.metadata_json = meta
     flag_modified(integration, "metadata_json")
-    integration.updated_at = datetime.now(timezone.utc)
+    integration.updated_at = datetime.utcnow()
     await db.commit()
 
     return {"status": "ok", "metadata": meta}

@@ -11,7 +11,11 @@ class Base(DeclarativeBase):
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_pre_ping=True,  # test connections before use — Supabase pooler drops idle connections
+    pool_pre_ping=True,
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    },
 )
 
 async_session_maker = async_sessionmaker(

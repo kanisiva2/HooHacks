@@ -60,6 +60,8 @@ export function useIncidentSocket(incidentId: string) {
     let isMounted = true;
 
     const connect = () => {
+      if (!isMounted) return;
+
       const wsBase = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
       const socket = new WebSocket(`${wsBase}/ws/${incidentId}`);
       websocketRef.current = socket;
@@ -121,16 +123,17 @@ export function useIncidentSocket(incidentId: string) {
         }, delay);
       };
 
-      socket.onerror = (error) => {
-        console.error("Incident socket error", error);
+      socket.onerror = () => {
+        if (!isMounted) return;
       };
     };
 
     setIncidentId(incidentId);
-    connect();
+    const connectTimeout = setTimeout(connect, 50);
 
     return () => {
       isMounted = false;
+      clearTimeout(connectTimeout);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }

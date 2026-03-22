@@ -1,6 +1,6 @@
 """
-LLM client — abstraction over Anthropic and OpenAI.
-Routes to claude-sonnet-4-6 (Anthropic) or gpt-4o (OpenAI) based on LLM_PROVIDER config.
+LLM client — abstraction over Anthropic, OpenAI, and Gemini.
+Routes to the configured provider based on LLM_PROVIDER config.
 All calls are async. JSON responses are sanitized (markdown fences stripped).
 """
 
@@ -8,9 +8,6 @@ import json
 import logging
 import re
 from typing import Any
-
-import anthropic
-import openai
 
 from app.config import settings
 
@@ -25,7 +22,20 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL)
 
 async def _call_llm(system: str, user: str, max_tokens: int = 1024) -> str:
     """Route a single prompt to the configured LLM provider and return raw text."""
+    if settings.llm_provider == "gemini":
+        from google import genai
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f"{system}\n\n{user}",
+            config=genai.types.GenerateContentConfig(max_output_tokens=max_tokens),
+        )
+        return response.text or ""
+
     if settings.llm_provider == "anthropic":
+        import anthropic
+
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         message = await client.messages.create(
             model="claude-sonnet-4-6",
@@ -34,6 +44,8 @@ async def _call_llm(system: str, user: str, max_tokens: int = 1024) -> str:
             messages=[{"role": "user", "content": user}],
         )
         return message.content[0].text
+
+    import openai
 
     client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
