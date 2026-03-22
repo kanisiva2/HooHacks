@@ -3,12 +3,14 @@
 import type { DeepDiveResult } from "@/types/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type SuspectFileListProps = {
   results: DeepDiveResult[];
   selectedResultId?: string;
   onSelectResult: (resultId: string) => void;
+  isLoading?: boolean;
 };
 
 function confidenceInfo(confidence: number) {
@@ -26,15 +28,28 @@ export function SuspectFileList({
   results,
   selectedResultId,
   onSelectResult,
+  isLoading,
 }: SuspectFileListProps) {
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <SuspectRowSkeleton />
+        <SuspectRowSkeleton />
+        <SuspectRowSkeleton />
+      </div>
+    );
+  }
+
   if (results.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>No deep dive results</CardTitle>
+          <CardTitle>Deep dive not started</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">No deep dive results yet.</p>
+          <p className="text-sm text-muted-foreground">
+            Deep dive not started. Trigger analysis or wait for automatic investigation.
+          </p>
         </CardContent>
       </Card>
     );
@@ -78,3 +93,19 @@ export function SuspectFileList({
   );
 }
 
+function SuspectRowSkeleton() {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-5 w-10 rounded-full" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-5 w-14 rounded-full" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      </div>
+    </div>
+  );
+}

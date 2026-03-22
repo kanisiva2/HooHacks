@@ -16,11 +16,15 @@ type IncidentStore = {
     lastMessage: string | null;
     timestamp: number;
   };
+  connectionStatus: "connecting" | "connected" | "reconnecting" | "disconnected";
   setIncidentId: (incidentId: string | null) => void;
   addTranscriptLine: (line: Omit<TranscriptLine, "id"> & { id?: string }) => void;
   upsertActionItem: (item: ActionItem) => void;
   setSuspectFiles: (files: DeepDiveResult[]) => void;
   setAgentStatus: (state: AgentState, lastMessage: string | null) => void;
+  setConnectionStatus: (
+    status: "connecting" | "connected" | "reconnecting" | "disconnected",
+  ) => void;
   reset: () => void;
 };
 
@@ -34,6 +38,7 @@ const initialState = {
     lastMessage: null,
     timestamp: Date.now(),
   },
+  connectionStatus: "connecting" as const,
 };
 
 export const useIncidentStore = create<IncidentStore>((set) => ({
@@ -74,5 +79,6 @@ export const useIncidentStore = create<IncidentStore>((set) => ({
         timestamp: Date.now(),
       },
     }),
+  setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   reset: () => set({ ...initialState }),
 }));

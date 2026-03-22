@@ -3,10 +3,12 @@
 import type { DeepDiveResult } from "@/types/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type EvidenceCardProps = {
   result?: DeepDiveResult;
   defaultRepo?: string | null;
+  isLoading?: boolean;
 };
 
 function confidenceClass(confidence: number) {
@@ -27,7 +29,22 @@ function extractString(record: Record<string, unknown> | null, keys: string[]) {
   return null;
 }
 
-export function EvidenceCard({ result, defaultRepo }: EvidenceCardProps) {
+export function EvidenceCard({ result, defaultRepo, isLoading }: EvidenceCardProps) {
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Evidence</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!result) {
     return (
       <Card>
@@ -85,4 +102,3 @@ export function EvidenceCard({ result, defaultRepo }: EvidenceCardProps) {
     </Card>
   );
 }
-

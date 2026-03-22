@@ -20,7 +20,7 @@ export function TranscriptFeed() {
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {transcript.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Transcript chunks will appear here once the agent starts listening.
+            Waiting for bot to join meeting...
           </p>
         ) : (
           transcript.map((line) => (

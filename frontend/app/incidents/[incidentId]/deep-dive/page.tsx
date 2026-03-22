@@ -8,6 +8,7 @@ import { EvidenceCard } from "@/components/deep_dive/EvidenceCard";
 import { SuspectFileList } from "@/components/deep_dive/SuspectFileList";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { PanelErrorBoundary } from "@/components/shared/PanelErrorBoundary";
 import { OnboardingGate } from "@/components/shared/OnboardingGate";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Button } from "@/components/ui/button";
@@ -62,27 +63,36 @@ export default function DeepDivePage() {
                   results={results}
                   selectedResultId={effectiveSelectedResultId}
                   onSelectResult={setSelectedResultId}
+                  isLoading={resultsQuery.isLoading}
                 />
               </div>
 
-              <Card className="overflow-hidden">
-                <CardHeader>
-                  <CardTitle>Code Panel</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[400px] md:h-[560px] lg:h-[calc(100vh-300px)]">
-                  <CodePanel
-                    filePath={selectedResult?.suspect_file}
-                    fileContent={fileQuery.data}
-                    lineStart={selectedResult?.suspect_lines_start}
-                    lineEnd={selectedResult?.suspect_lines_end}
-                    isLoading={fileQuery.isLoading}
-                  />
-                </CardContent>
-              </Card>
+              <PanelErrorBoundary panelName="Code panel">
+                <Card className="overflow-hidden">
+                  <CardHeader>
+                    <CardTitle>Code Panel</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-[400px] md:h-[560px] lg:h-[calc(100vh-300px)]">
+                    <CodePanel
+                      filePath={selectedResult?.suspect_file}
+                      fileContent={fileQuery.data}
+                      lineStart={selectedResult?.suspect_lines_start}
+                      lineEnd={selectedResult?.suspect_lines_end}
+                      isLoading={fileQuery.isLoading}
+                    />
+                  </CardContent>
+                </Card>
+              </PanelErrorBoundary>
             </div>
 
             <div className="mt-4 hidden lg:block">
-              <EvidenceCard result={selectedResult ?? undefined} defaultRepo={defaults.data?.default_repo} />
+              <PanelErrorBoundary panelName="Evidence panel">
+                <EvidenceCard
+                  result={selectedResult ?? undefined}
+                  defaultRepo={defaults.data?.default_repo}
+                  isLoading={resultsQuery.isLoading}
+                />
+              </PanelErrorBoundary>
             </div>
 
             <div className="lg:hidden">
@@ -93,24 +103,32 @@ export default function DeepDivePage() {
                   <TabsTrigger value="evidence">Evidence</TabsTrigger>
                 </TabsList>
                 <TabsContent value="suspects">
-                  <SuspectFileList
-                    results={results}
-                    selectedResultId={effectiveSelectedResultId}
-                    onSelectResult={setSelectedResultId}
-                  />
+                  <PanelErrorBoundary panelName="Suspect file list">
+                    <SuspectFileList
+                      results={results}
+                      selectedResultId={effectiveSelectedResultId}
+                      onSelectResult={setSelectedResultId}
+                      isLoading={resultsQuery.isLoading}
+                    />
+                  </PanelErrorBoundary>
                 </TabsContent>
                 <TabsContent value="code">
-                  {selectedResult ? (
-                    <CodeSnippet result={selectedResult} fileContent={fileQuery.data} />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Select a suspect file first.</p>
-                  )}
+                  <PanelErrorBoundary panelName="Code snippet">
+                    {selectedResult ? (
+                      <CodeSnippet result={selectedResult} fileContent={fileQuery.data} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Select a suspect file first.</p>
+                    )}
+                  </PanelErrorBoundary>
                 </TabsContent>
                 <TabsContent value="evidence">
-                  <EvidenceCard
-                    result={selectedResult ?? undefined}
-                    defaultRepo={defaults.data?.default_repo}
-                  />
+                  <PanelErrorBoundary panelName="Evidence panel">
+                    <EvidenceCard
+                      result={selectedResult ?? undefined}
+                      defaultRepo={defaults.data?.default_repo}
+                      isLoading={resultsQuery.isLoading}
+                    />
+                  </PanelErrorBoundary>
                 </TabsContent>
               </Tabs>
             </div>

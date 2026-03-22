@@ -7,9 +7,11 @@ import type {
   IncidentSocketMessage,
   ActionItemUpdateMessage,
 } from "@/types/api";
+import { toastConnectionReconnecting, toastConnectionRestored, toastError } from "@/lib/toast";
 
 const WS_RECONNECT_BASE_MS = 1000;
 const WS_RECONNECT_MAX_MS = 15000;
+const WS_RECONNECT_MAX_RETRIES = 5;
 
 function toEpochMs(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) {
@@ -50,7 +52,9 @@ export function useIncidentSocket(incidentId: string) {
   const setSuspectFiles = useIncidentStore((state) => state.setSuspectFiles);
   const setAgentStatus = useIncidentStore((state) => state.setAgentStatus);
   const setIncidentId = useIncidentStore((state) => state.setIncidentId);
+  const setConnectionStatus = useIncidentStore((state) => state.setConnectionStatus);
   const reset = useIncidentStore((state) => state.reset);
+  const hasShownReconnectToast = useRef(false);
 
   useEffect(() => {
     if (!incidentId) {
@@ -63,11 +67,20 @@ export function useIncidentSocket(incidentId: string) {
       if (!isMounted) return;
 
       const wsBase = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
+      setConnectionStatus(
+        reconnectAttemptsRef.current > 0 ? "reconnecting" : "connecting",
+      );
       const socket = new WebSocket(`${wsBase}/ws/${incidentId}`);
       websocketRef.current = socket;
 
       socket.onopen = () => {
+        const wasReconnecting = reconnectAttemptsRef.current > 0;
         reconnectAttemptsRef.current = 0;
+        setConnectionStatus("connected");
+        if (wasReconnecting && hasShownReconnectToast.current) {
+          toastConnectionRestored();
+          hasShownReconnectToast.current = false;
+        }
       };
 
       socket.onmessage = (event) => {
@@ -104,6 +117,7 @@ export function useIncidentSocket(incidentId: string) {
           }
         } catch (error) {
           console.error("Failed to parse incident socket message", error);
+          toastError("Failed to process live update");
         }
       };
 
@@ -112,11 +126,22 @@ export function useIncidentSocket(incidentId: string) {
           return;
         }
 
+        if (reconnectAttemptsRef.current >= WS_RECONNECT_MAX_RETRIES) {
+          setConnectionStatus("disconnected");
+          toastError("Connection lost — unable to reconnect");
+          return;
+        }
+
         reconnectAttemptsRef.current += 1;
         const delay = Math.min(
           WS_RECONNECT_BASE_MS * 2 ** reconnectAttemptsRef.current,
           WS_RECONNECT_MAX_MS,
         );
+        setConnectionStatus("reconnecting");
+        if (!hasShownReconnectToast.current) {
+          toastConnectionReconnecting();
+          hasShownReconnectToast.current = true;
+        }
 
         reconnectTimeoutRef.current = setTimeout(() => {
           connect();
@@ -125,10 +150,14 @@ export function useIncidentSocket(incidentId: string) {
 
       socket.onerror = () => {
         if (!isMounted) return;
+        if (reconnectAttemptsRef.current === 0) {
+          toastError("Live connection error");
+        }
       };
     };
 
     setIncidentId(incidentId);
+    setConnectionStatus("connecting");
     const connectTimeout = setTimeout(connect, 50);
 
     return () => {
@@ -149,6 +178,7 @@ export function useIncidentSocket(incidentId: string) {
     setSuspectFiles,
     setAgentStatus,
     setIncidentId,
+    setConnectionStatus,
     reset,
   ]);
 }

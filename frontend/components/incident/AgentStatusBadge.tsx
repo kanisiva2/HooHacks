@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useIncidentStore } from "@/stores/incidentStore";
 import type { AgentState } from "@/types/api";
+import { toastBotJoined } from "@/lib/toast";
 
 const statusConfig: Record<
   AgentState,
@@ -44,10 +46,22 @@ const statusConfig: Record<
 export function AgentStatusBadge() {
   const { state, lastMessage } = useIncidentStore((store) => store.agentStatus);
   const config = statusConfig[state];
+  const previousStateRef = useRef<AgentState | null>(null);
+
+  useEffect(() => {
+    if (previousStateRef.current === "joining" && state === "listening") {
+      toastBotJoined();
+    }
+    previousStateRef.current = state;
+  }, [state]);
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Badge variant={config.badgeVariant} className="gap-2">
+      <Badge
+        variant={config.badgeVariant}
+        className="gap-2"
+        aria-label={`Agent status ${config.label}`}
+      >
         <span className={cn("h-2 w-2 rounded-full", config.dotClassName)} />
         {config.label}
       </Badge>
