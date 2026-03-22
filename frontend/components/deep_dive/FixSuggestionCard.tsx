@@ -44,9 +44,9 @@ export function FixSuggestionCard({
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Fix Suggestion</CardTitle>
+          <CardTitle className="text-base text-slate-950">Fix Suggestion</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Skeleton className="h-4 w-40" />
@@ -59,12 +59,12 @@ export function FixSuggestionCard({
 
   if (!result) {
     return (
-      <Card>
+      <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Fix Suggestion</CardTitle>
+          <CardTitle className="text-base text-slate-950">Fix Suggestion</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Select a suspect file to generate a suggested code change.
           </p>
         </CardContent>
@@ -74,12 +74,12 @@ export function FixSuggestionCard({
 
   if (!canGenerateSuggestion(result)) {
     return (
-      <Card>
+      <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Fix Suggestion</CardTitle>
+          <CardTitle className="text-base text-slate-950">Fix Suggestion</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             This result does not include a precise line range yet, so Sprynt cannot
             propose a targeted replacement.
           </p>
@@ -114,39 +114,40 @@ export function FixSuggestionCard({
   };
 
   return (
-    <Card>
+    <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle>Fix Suggestion</CardTitle>
+        <CardTitle className="text-base text-slate-950">Fix Suggestion</CardTitle>
         <Button
           type="button"
           variant="outline"
           onClick={handleGenerate}
           disabled={generateMutation.isPending}
+          className="rounded-2xl border-slate-200 bg-white/85 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
         >
           {generateMutation.isPending ? "Generating..." : suggestion ? "Regenerate" : "Generate Fix Suggestion"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {!suggestion ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Generate a localized patch for the highlighted suspect lines, then review
             the diff before creating a branch or pull request in GitHub.
           </p>
         ) : (
           <>
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
-              <p className="text-sm">{suggestion.summary}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Summary</p>
+              <p className="text-sm font-medium text-slate-900">{suggestion.summary}</p>
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Rationale</p>
-              <p className="text-sm text-muted-foreground">{suggestion.rationale}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Rationale</p>
+              <p className="text-sm text-slate-600">{suggestion.rationale}</p>
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Risk Notes</p>
-              <p className="text-sm text-muted-foreground">{suggestion.risk_notes}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Risk Notes</p>
+              <p className="text-sm text-slate-600">{suggestion.risk_notes}</p>
             </div>
 
             <div className="space-y-2">
@@ -156,19 +157,19 @@ export function FixSuggestionCard({
               <textarea
                 value={replacementCode}
                 onChange={(event) => setReplacementCode(event.target.value)}
-                className="min-h-40 w-full rounded-lg border border-border bg-background p-3 font-mono text-xs outline-none focus:border-ring"
+                className="min-h-40 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs outline-none focus:border-ring"
                 spellCheck={false}
               />
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Unified Diff</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Unified Diff</p>
               {replacementCode !== suggestion.replacement_code ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-slate-500">
                   Regenerate to refresh the diff after editing the replacement code.
                 </p>
               ) : null}
-              <pre className="max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+              <pre className="max-h-96 overflow-auto rounded-xl border border-slate-200/70 bg-slate-950 p-3 font-mono text-xs whitespace-pre-wrap text-slate-100">
                 {suggestion.diff}
               </pre>
             </div>
@@ -178,6 +179,7 @@ export function FixSuggestionCard({
                 type="button"
                 onClick={() => handleApply(false)}
                 disabled={applyMutation.isPending || replacementCode.trim().length === 0}
+                className="rounded-2xl bg-slate-950 shadow-[0_8px_20px_rgba(15,23,42,0.14)] hover:bg-slate-800"
               >
                 {isApplyingBranch ? "Creating Branch..." : "Apply to Branch"}
               </Button>
@@ -186,13 +188,14 @@ export function FixSuggestionCard({
                 variant="outline"
                 onClick={() => handleApply(true)}
                 disabled={applyMutation.isPending || replacementCode.trim().length === 0}
+                className="rounded-2xl border-slate-200 bg-white/85 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
               >
                 {isApplyingPr ? "Opening PR..." : "Apply and Open PR"}
               </Button>
             </div>
 
             {lastApplyResponse ? (
-              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <div className="rounded-xl border border-slate-200/70 bg-slate-50/80 p-4 text-sm">
                 <p>
                   Created branch <span className="font-mono">{lastApplyResponse.branch_name}</span>
                   {lastApplyResponse.commit_sha ? (
@@ -210,7 +213,7 @@ export function FixSuggestionCard({
                     href={lastApplyResponse.pull_request_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-2 inline-block text-blue-600 hover:underline"
+                    className="mt-2 inline-block font-medium text-slate-900 hover:text-slate-950 hover:underline"
                   >
                     Open pull request #{lastApplyResponse.pull_request_number}
                   </a>

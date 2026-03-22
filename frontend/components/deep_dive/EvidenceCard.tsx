@@ -32,9 +32,9 @@ function extractString(record: Record<string, unknown> | null, keys: string[]) {
 export function EvidenceCard({ result, defaultRepo, isLoading }: EvidenceCardProps) {
   if (isLoading) {
     return (
-      <Card>
+      <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Evidence</CardTitle>
+          <CardTitle className="text-base text-slate-950">Evidence</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <Skeleton className="h-4 w-5/6" />
@@ -47,12 +47,12 @@ export function EvidenceCard({ result, defaultRepo, isLoading }: EvidenceCardPro
 
   if (!result) {
     return (
-      <Card>
+      <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Evidence</CardTitle>
+          <CardTitle className="text-base text-slate-950">Evidence</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Select a suspect file to view evidence and commit context.
           </p>
         </CardContent>
@@ -71,31 +71,31 @@ export function EvidenceCard({ result, defaultRepo, isLoading }: EvidenceCardPro
     defaultRepo && commitSha ? `https://github.com/${defaultRepo}/commit/${commitSha}` : null;
 
   return (
-    <Card>
+    <Card className="rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <CardTitle className="text-base">Evidence</CardTitle>
+        <CardTitle className="text-base text-slate-950">Evidence</CardTitle>
         <Badge className={confidenceClass(result.confidence)} variant="secondary">
           {confidence}%
         </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">{reasoning}</p>
+        <p className="text-sm leading-7 text-slate-600">{reasoning}</p>
         {commitSha ? (
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Commit</p>
+          <div className="space-y-1 rounded-xl border border-slate-200/70 bg-white/70 p-4">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-slate-400">Commit</p>
             {commitHref ? (
               <a
                 href={commitHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline"
+                className="text-sm font-medium text-slate-900 hover:text-slate-950 hover:underline"
               >
                 {commitSha}
               </a>
             ) : (
-              <p className="text-sm">{commitSha}</p>
+              <p className="text-sm font-medium text-slate-900">{commitSha}</p>
             )}
-            {commitMessage ? <p className="text-sm text-muted-foreground">{commitMessage}</p> : null}
+            {commitMessage ? <p className="text-sm text-slate-500">{commitMessage}</p> : null}
           </div>
         ) : null}
       </CardContent>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { FileSearch, Sparkles } from "lucide-react";
 import { CodeSnippet } from "@/components/deep_dive/CodeSnippet";
 import { EvidenceCard } from "@/components/deep_dive/EvidenceCard";
 import { FixSuggestionCard } from "@/components/deep_dive/FixSuggestionCard";
@@ -45,17 +46,39 @@ export default function DeepDivePage() {
   return (
     <ProtectedPage>
       <OnboardingGate>
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen bg-[linear-gradient(180deg,#f8f5ef_0%,#f5f2ec_100%)]">
           <Sidebar />
-          <main className="w-full p-4 pb-20 md:p-6 md:pb-6">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h1 className="text-2xl font-semibold">Deep Dive Results</h1>
+          <main className="flex-1 overflow-y-auto px-4 pb-20 pt-6 md:px-8 md:pb-8">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-semibold tracking-[-0.04em] text-slate-950 md:text-3xl">
+                    Deep Dive Results
+                  </h1>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Inspect ranked suspect files, review evidence, and turn findings into safe code changes.
+                </p>
+              </div>
               <Button
                 onClick={() => triggerMutation.mutate(incidentId)}
                 disabled={triggerMutation.isPending}
+                size="lg"
+                className="rounded-2xl bg-slate-950 px-5 shadow-[0_8px_20px_rgba(15,23,42,0.14)] hover:bg-slate-800"
               >
                 {triggerMutation.isPending ? "Triggering..." : "Re-run Deep Dive"}
               </Button>
+            </div>
+
+            <div className="mb-6 flex items-center gap-2 rounded-xl border border-sky-200/80 bg-white/72 px-4 py-3 text-sm text-slate-600 backdrop-blur-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                {isReviewMode ? <Sparkles className="h-4 w-4" /> : <FileSearch className="h-4 w-4" />}
+              </div>
+              <span>
+                {isReviewMode
+                  ? "Fix review mode is open. Compare the generated patch and push it safely to GitHub."
+                  : "Deep Dive ranks likely suspect files from your incident context and recent repository activity."}
+              </span>
             </div>
 
             <div

@@ -42,12 +42,12 @@ export function SuspectFileList({
 
   if (results.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-2xl border-white/70 bg-white/72 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Deep dive not started</CardTitle>
+          <CardTitle className="text-base text-slate-950">Deep dive not started</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Deep dive not started. Trigger analysis or wait for automatic investigation.
           </p>
         </CardContent>
@@ -70,20 +70,29 @@ export function SuspectFileList({
             key={result.id}
             onClick={() => onSelectResult(result.id)}
             className={cn(
-              "w-full rounded-lg border bg-card text-left transition hover:bg-muted/40",
-              selectedResultId === result.id ? "ring-2 ring-primary/40" : "",
+              "w-full rounded-2xl border border-white/70 bg-white/72 text-left backdrop-blur-sm transition-all duration-150 hover:bg-white hover:shadow-md",
+              selectedResultId === result.id
+                ? "border-slate-950/10 ring-2 ring-slate-950/10 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                : "",
             )}
           >
-            <div className="space-y-2 p-4">
+            <div className="space-y-3 p-4">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium">{result.suspect_file}</p>
-                <Badge variant="outline">#{result.rank}</Badge>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{result.suspect_file}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                    Suspect #{result.rank}
+                  </p>
+                </div>
+                <Badge variant="outline" className="rounded-full border-slate-200 bg-white/80 text-slate-600">
+                  #{result.rank}
+                </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={info.className} variant="secondary">
                   {info.percentage}%
                 </Badge>
-                <span className="text-xs text-muted-foreground">Lines {lines}</span>
+                <span className="text-xs text-slate-500">Lines {lines}</span>
               </div>
             </div>
           </button>
@@ -95,7 +104,7 @@ export function SuspectFileList({
 
 function SuspectRowSkeleton() {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-2xl border border-white/70 bg-white/72 p-4 backdrop-blur-sm">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <Skeleton className="h-4 w-3/4" />
