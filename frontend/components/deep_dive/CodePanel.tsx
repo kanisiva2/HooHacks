@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { editor } from "monaco-editor";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -116,7 +117,14 @@ export function CodePanel({
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading file...</p>;
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-3/5" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
   }
 
   return (

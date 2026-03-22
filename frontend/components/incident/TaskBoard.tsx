@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspaceDefaults } from "@/hooks/useWorkspaceDefaults";
 import { useIncidentStore } from "@/stores/incidentStore";
 import { confidenceToPercentage, statusToColorClass } from "@/lib/utils";
@@ -10,6 +11,7 @@ import type { ActionItem, TaskStatus } from "@/types/api";
 
 type TaskBoardProps = {
   incidentId: string;
+  isLoading?: boolean;
 };
 
 const columns: { status: TaskStatus; label: string }[] = [
@@ -17,7 +19,7 @@ const columns: { status: TaskStatus; label: string }[] = [
   { status: "synced", label: "Synced" },
 ];
 
-export function TaskBoard({ incidentId }: TaskBoardProps) {
+export function TaskBoard({ incidentId, isLoading }: TaskBoardProps) {
   const actionItems = useIncidentStore((store) => store.actionItems);
   const approveTask = useApproveTask();
   const dismissTask = useDismissTask();
@@ -26,12 +28,18 @@ export function TaskBoard({ incidentId }: TaskBoardProps) {
   const visibleItems = actionItems.filter(
     (item) => item.status !== "dismissed" && item.status !== "closed",
   );
+  const showSkeletons = Boolean(isLoading) && visibleItems.length === 0;
 
   return (
     <div className="flex h-full flex-col rounded-xl border bg-card">
       <div className="border-b px-4 py-3">
         <h2 className="font-medium">Task Board</h2>
       </div>
+      {!showSkeletons && visibleItems.length === 0 ? (
+        <div className="px-4 pt-3">
+          <p className="text-xs text-muted-foreground">No tasks extracted yet.</p>
+        </div>
+      ) : null}
       <div className="grid flex-1 gap-3 overflow-x-auto p-4 md:grid-cols-2">
         {columns.map((column) => {
           const items = visibleItems
@@ -45,17 +53,23 @@ export function TaskBoard({ incidentId }: TaskBoardProps) {
             >
               <header className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold">{column.label}</h3>
-                <Badge variant="outline">{items.length}</Badge>
+                <Badge variant="outline" aria-label={`${column.label} task count`}>
+                  {showSkeletons ? 0 : items.length}
+                </Badge>
               </header>
               <div className="space-y-2">
-                {items.length === 0 ? (
+                {showSkeletons ? (
+                  <>
+                    <TaskSkeleton />
+                    <TaskSkeleton />
+                  </>
+                ) : items.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No items yet.</p>
                 ) : (
                   items.map((item) => (
                     <TaskCard
                       key={item.id}
                       item={item}
-                      incidentId={incidentId}
                       defaults={defaults.data}
                       onApprove={() =>
                         approveTask.mutate({ incidentId, taskId: item.id })
@@ -79,8 +93,11 @@ export function TaskBoard({ incidentId }: TaskBoardProps) {
 
 type TaskCardProps = {
   item: ActionItem;
-  incidentId: string;
-  defaults: { jira_site_url?: string } | undefined;
+  defaults:
+    | {
+        jira_site_url: string | null;
+      }
+    | undefined;
   onApprove: () => void;
   onDismiss: () => void;
   isApproving: boolean;
@@ -99,17 +116,20 @@ function TaskCard({
     <article className="space-y-2 rounded-md border bg-background p-3">
       <p className="text-sm font-medium">{item.normalized_task}</p>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline">{item.owner ?? "Unassigned"}</Badge>
+        <Badge variant="outline" aria-label={`Owner ${item.owner ?? "Unassigned"}`}>
+          {item.owner ?? "Unassigned"}
+        </Badge>
         {item.priority ? (
           <Badge
             className={statusToColorClass(item.priority)}
             variant="secondary"
+            aria-label={`Priority ${item.priority}`}
           >
             {item.priority}
           </Badge>
         ) : null}
         {item.confidence !== null ? (
-          <Badge variant="secondary">
+          <Badge variant="secondary" aria-label={`Confidence ${confidenceToPercentage(item.confidence)}`}>
             {confidenceToPercentage(item.confidence)}
           </Badge>
         ) : null}
@@ -135,6 +155,7 @@ function TaskCard({
             variant="default"
             disabled={isApproving || isDismissing}
             onClick={onApprove}
+            aria-label={`Approve task ${item.normalized_task}`}
           >
             Approve
           </Button>
@@ -143,11 +164,25 @@ function TaskCard({
             variant="ghost"
             disabled={isApproving || isDismissing}
             onClick={onDismiss}
+            aria-label={`Dismiss task ${item.normalized_task}`}
           >
             Dismiss
           </Button>
         </div>
       )}
     </article>
+  );
+}
+
+function TaskSkeleton() {
+  return (
+    <div className="space-y-2 rounded-md border bg-background p-3">
+      <Skeleton className="h-4 w-4/5" />
+      <div className="flex gap-2">
+        <Skeleton className="h-5 w-20 rounded-full" />
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </div>
+      <Skeleton className="h-6 w-24" />
+    </div>
   );
 }

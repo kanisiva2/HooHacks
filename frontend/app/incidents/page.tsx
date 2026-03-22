@@ -10,6 +10,7 @@ import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useIncidents } from "@/hooks/useIncident";
 import { usePrimaryWorkspace } from "@/hooks/useWorkspaces";
 import { formatRelativeTime, severityToBadgeVariant } from "@/lib/utils";
@@ -47,8 +48,24 @@ export default function IncidentsPage() {
 
             {workspaceLoading || incidents.isLoading ? (
               <div className="grid gap-3">
-                <div className="h-20 animate-pulse rounded-xl bg-muted" />
-                <div className="h-20 animate-pulse rounded-xl bg-muted" />
+                <Card>
+                  <CardHeader>
+                    <Skeleton className="h-4 w-1/3" />
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="h-4 w-3/5" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <Skeleton className="h-4 w-1/4" />
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardContent>
+                </Card>
               </div>
             ) : sortedIncidents.length === 0 ? (
               <Card>

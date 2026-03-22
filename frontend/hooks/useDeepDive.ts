@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { DeepDiveResult } from "@/types/api";
+import { toastDeepDiveTriggered, toastError } from "@/lib/toast";
 
 export function useDeepDiveResults(incidentId: string | undefined) {
   return useQuery({
@@ -43,6 +44,10 @@ export function useTriggerDeepDive() {
     },
     onSuccess: (incidentId) => {
       queryClient.invalidateQueries({ queryKey: ["deep-dive", incidentId] });
+      toastDeepDiveTriggered();
+    },
+    onError: () => {
+      toastError("Failed to trigger deep dive");
     },
   });
 }

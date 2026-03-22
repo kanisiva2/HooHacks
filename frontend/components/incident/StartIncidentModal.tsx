@@ -96,7 +96,7 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
                 });
               }}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" aria-label="Incident severity">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

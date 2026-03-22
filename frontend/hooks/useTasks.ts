@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useIncidentStore } from "@/stores/incidentStore";
 import type { ActionItem } from "@/types/api";
+import { toastError, toastTaskDismissed, toastTaskSynced } from "@/lib/toast";
 
 type TaskUpdateInput = {
   incidentId: string;
@@ -93,6 +94,10 @@ export function useApproveTask() {
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ["tasks", item.incident_id] });
       upsertActionItem(item);
+      toastTaskSynced(item.jira_issue_key);
+    },
+    onError: () => {
+      toastError("Failed to approve task");
     },
   });
 }
@@ -111,6 +116,10 @@ export function useDismissTask() {
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ["tasks", item.incident_id] });
       upsertActionItem(item);
+      toastTaskDismissed();
+    },
+    onError: () => {
+      toastError("Failed to dismiss task");
     },
   });
 }

@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AgentStatusBadge } from "@/components/incident/AgentStatusBadge";
+import { ReconnectionBanner } from "@/components/incident/ReconnectionBanner";
 import { TaskBoard } from "@/components/incident/TaskBoard";
 import { TranscriptFeed } from "@/components/incident/TranscriptFeed";
 import { OnboardingGate } from "@/components/shared/OnboardingGate";
+import { PanelErrorBoundary } from "@/components/shared/PanelErrorBoundary";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import { useIncidentSocket } from "@/hooks/useIncidentSocket";
 import { useTasks } from "@/hooks/useTasks";
 import { usePrimaryWorkspace } from "@/hooks/useWorkspaces";
 import { api } from "@/lib/api";
+import { toastDeepDiveComplete, toastError } from "@/lib/toast";
 import { severityToBadgeVariant } from "@/lib/utils";
 import { useIncidentStore } from "@/stores/incidentStore";
 import { useUIStore } from "@/stores/uiStore";
@@ -39,6 +42,8 @@ export default function IncidentRoomPage() {
   const setSuspectFiles = useIncidentStore((store) => store.setSuspectFiles);
   const activePanel = useUIStore((store) => store.activePanel);
   const setActivePanel = useUIStore((store) => store.setActivePanel);
+  const hasShownDeepDiveToastRef = useRef(false);
+  const previousDeepDiveCountRef = useRef(0);
 
   useIncidentSocket(incidentId);
 
@@ -55,6 +60,16 @@ export default function IncidentRoomPage() {
     }
   }, [deepDiveQuery.data, suspectFiles.length, setSuspectFiles]);
 
+  useEffect(() => {
+    const currentCount = deepDiveQuery.data?.length ?? 0;
+    const previousCount = previousDeepDiveCountRef.current;
+    if (previousCount === 0 && currentCount > 0 && !hasShownDeepDiveToastRef.current) {
+      toastDeepDiveComplete();
+      hasShownDeepDiveToastRef.current = true;
+    }
+    previousDeepDiveCountRef.current = currentCount;
+  }, [deepDiveQuery.data]);
+
   const topSuspects = useMemo(
     () => [...suspectFiles].sort((a, b) => a.rank - b.rank).slice(0, 3),
     [suspectFiles],
@@ -70,6 +85,7 @@ export default function IncidentRoomPage() {
       router.push("/incidents");
     } catch (error) {
       console.error("Failed to resolve incident", error);
+      toastError("Failed to resolve incident");
     }
   };
 
@@ -79,6 +95,7 @@ export default function IncidentRoomPage() {
         <div className="flex min-h-screen">
           <Sidebar />
           <main className="w-full p-4 pb-20 md:p-6 md:pb-6">
+            <ReconnectionBanner />
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-semibold">
@@ -103,33 +120,39 @@ export default function IncidentRoomPage() {
             </div>
 
             <div className="hidden h-[calc(100vh-180px)] gap-4 lg:grid lg:grid-cols-[1.2fr_1.2fr_0.8fr]">
-              <TranscriptFeed />
-              <TaskBoard incidentId={incidentId} />
-              <Card>
-                <CardHeader>
-                  <CardTitle>Deep Dive Preview</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {topSuspects.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No suspect files yet. Trigger or wait for analysis.
-                    </p>
-                  ) : (
-                    topSuspects.map((result) => (
-                      <Link
-                        key={result.id}
-                        href={`/incidents/${incidentId}/deep-dive`}
-                        className="block rounded-md border p-2 hover:bg-muted/40"
-                      >
-                        <p className="text-sm font-medium">{result.suspect_file}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Confidence {(result.confidence * 100).toFixed(0)}%
-                        </p>
-                      </Link>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
+              <PanelErrorBoundary panelName="Transcript panel" className="h-full">
+                <TranscriptFeed />
+              </PanelErrorBoundary>
+              <PanelErrorBoundary panelName="Task board" className="h-full">
+                <TaskBoard incidentId={incidentId} isLoading={tasksQuery.isLoading} />
+              </PanelErrorBoundary>
+              <PanelErrorBoundary panelName="Deep dive preview" className="h-full">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Deep Dive Preview</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {deepDiveQuery.isLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading deep dive results...</p>
+                    ) : topSuspects.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Deep dive not started.</p>
+                    ) : (
+                      topSuspects.map((result) => (
+                        <Link
+                          key={result.id}
+                          href={`/incidents/${incidentId}/deep-dive`}
+                          className="block rounded-md border p-2 hover:bg-muted/40"
+                        >
+                          <p className="text-sm font-medium">{result.suspect_file}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Confidence {(result.confidence * 100).toFixed(0)}%
+                          </p>
+                        </Link>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </PanelErrorBoundary>
             </div>
 
             <div className="lg:hidden">
@@ -145,32 +168,42 @@ export default function IncidentRoomPage() {
                   <TabsTrigger value="deep-dive">Deep Dive</TabsTrigger>
                 </TabsList>
                 <TabsContent value="transcript" className="h-[calc(100vh-250px)]">
-                  <TranscriptFeed />
+                  <PanelErrorBoundary panelName="Transcript panel" className="h-full">
+                    <TranscriptFeed />
+                  </PanelErrorBoundary>
                 </TabsContent>
                 <TabsContent value="tasks" className="h-[calc(100vh-250px)]">
-                  <TaskBoard incidentId={incidentId} />
+                  <PanelErrorBoundary panelName="Task board" className="h-full">
+                    <TaskBoard incidentId={incidentId} isLoading={tasksQuery.isLoading} />
+                  </PanelErrorBoundary>
                 </TabsContent>
                 <TabsContent value="deep-dive" className="h-[calc(100vh-250px)]">
-                  <Card className="h-full">
-                    <CardHeader>
-                      <CardTitle>Deep Dive Preview</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {topSuspects.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No suspect files yet.</p>
-                      ) : (
-                        topSuspects.map((result) => (
-                          <Link
-                            key={result.id}
-                            href={`/incidents/${incidentId}/deep-dive`}
-                            className="block rounded-md border p-2"
-                          >
-                            <p className="text-sm font-medium">{result.suspect_file}</p>
-                          </Link>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
+                  <PanelErrorBoundary panelName="Deep dive preview" className="h-full">
+                    <Card className="h-full">
+                      <CardHeader>
+                        <CardTitle>Deep Dive Preview</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {deepDiveQuery.isLoading ? (
+                          <p className="text-sm text-muted-foreground">
+                            Loading deep dive results...
+                          </p>
+                        ) : topSuspects.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Deep dive not started.</p>
+                        ) : (
+                          topSuspects.map((result) => (
+                            <Link
+                              key={result.id}
+                              href={`/incidents/${incidentId}/deep-dive`}
+                              className="block rounded-md border p-2"
+                            >
+                              <p className="text-sm font-medium">{result.suspect_file}</p>
+                            </Link>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+                  </PanelErrorBoundary>
                 </TabsContent>
               </Tabs>
             </div>
