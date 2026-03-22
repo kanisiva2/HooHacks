@@ -24,7 +24,7 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
     const hasGithub = integrations.data?.has_github ?? false;
     const hasJira = integrations.data?.has_jira ?? false;
 
-    if (!hasWorkspace) {
+    if (!hasWorkspace || !hasGithub || !hasJira) {
       router.replace("/onboarding");
     }
   }, [
