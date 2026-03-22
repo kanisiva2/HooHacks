@@ -9,6 +9,7 @@ import websockets
 
 from app.services.skribby import get_bot
 from app.services.transcript_parser import process_parsed_chunk
+from app.services.voice import register_skribby_url, unregister_skribby_url
 from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ async def listen_to_skribby(
         )
 
     await _send_status("joining", "Connecting to Skribby stream")
+    register_skribby_url(incident_id, websocket_url)
 
     max_attempts = 3
     attempt = 0
@@ -87,6 +89,7 @@ async def listen_to_skribby(
                         continue
 
                     if event_type == "stop":
+                        unregister_skribby_url(incident_id)
                         recording_url = await _fetch_recording_url(bot_id, incident_id)
                         msg = "Meeting ended"
                         if recording_url:
@@ -112,9 +115,11 @@ async def listen_to_skribby(
                 await _send_status("joining", f"Listener reconnecting after error ({attempt}/{max_attempts})")
                 await sleep(2**attempt)
                 continue
+            unregister_skribby_url(incident_id)
             await _send_status("error", f"Listener crashed: {exc}")
             return
 
+    unregister_skribby_url(incident_id)
     await _send_status("error", "Listener stopped after retries")
 
 

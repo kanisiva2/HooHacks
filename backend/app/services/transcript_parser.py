@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker
-from app.models.incident import Incident
+from app.models.incident import Incident, IncidentEvent
 from app.models.integration import Integration
 from app.models.transcript import TranscriptChunk
 from app.ws_manager import manager
@@ -264,6 +264,14 @@ async def _auto_deep_dive(db_original: AsyncSession, incident_id: str) -> None:
             summary = "\n".join(
                 f"{c.speaker or 'Unknown'}: {c.text}" for c in chunks
             )
+
+            # Log deep_dive_started event
+            db.add(IncidentEvent(
+                incident_id=uuid.UUID(incident_id),
+                event_type="deep_dive_started",
+                payload_json={"trigger": "auto", "repo": repo, "chunk_count": _final_chunk_counts.get(incident_id, 0)},
+            ))
+            await db.commit()
 
             await run_deep_dive(
                 incident_id=incident_id,
