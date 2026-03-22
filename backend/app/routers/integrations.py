@@ -5,6 +5,7 @@ Integrations router — GitHub + Jira OAuth connect/callback flows, status, disc
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -13,17 +14,45 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import settings
 from app.deps import get_current_user_id, get_db
 from app.models.integration import Integration
 from app.models.workspace import WorkspaceMember
+from app.services.github import get_user_repos
 from app.services.jira import get_jira_projects
-from app.schemas.integration import IntegrationStatus
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
+class IntegrationSettingsUpdate(BaseModel):
+    default_repo: Optional[str] = None
+    default_project_key: Optional[str] = None
+
+
+class IntegrationStatusFull(BaseModel):
+    has_github: bool
+    has_jira: bool
+    github_default_repo: Optional[str] = None
+    jira_default_project_key: Optional[str] = None
+
+
+class IntegrationDefaultsRequest(BaseModel):
+    default_repo: str | None = None
+    default_jira_project_key: str | None = None
+
+
+class IntegrationDefaultsResponse(BaseModel):
+    default_repo: str | None = None
+    default_jira_project_key: str | None = None
+    jira_site_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +75,23 @@ async def _get_user_workspace_id(
             detail="User has no workspace",
         )
     return row
+
+
+async def _assert_workspace_member(
+    db: AsyncSession, workspace_id: uuid.UUID, user_id: str
+) -> None:
+    """Raise 403 if the user is not a member of the given workspace."""
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == uuid.UUID(user_id),
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of the specified workspace",
+        )
 
 
 async def _upsert_integration(
@@ -90,6 +136,7 @@ async def _upsert_integration(
 async def _get_integration(
     db: AsyncSession, workspace_id: uuid.UUID, provider: str
 ) -> Integration:
+    """Fetch an integration row or raise 404."""
     result = await db.execute(
         select(Integration).where(
             Integration.workspace_id == workspace_id,
@@ -100,20 +147,9 @@ async def _get_integration(
     if integration is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"{provider.capitalize()} integration not connected",
+            detail=f"{provider.title()} is not connected",
         )
     return integration
-
-
-class IntegrationDefaultsRequest(BaseModel):
-    default_repo: str | None = None
-    default_jira_project_key: str | None = None
-
-
-class IntegrationDefaultsResponse(BaseModel):
-    default_repo: str | None = None
-    default_jira_project_key: str | None = None
-    jira_site_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +160,11 @@ class IntegrationDefaultsResponse(BaseModel):
 async def github_connect(
     workspace_id: str = Query(...),
     user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Redirect the user to GitHub's OAuth authorization page."""
+    """Return the GitHub OAuth authorization URL (frontend navigates to it)."""
+    await _assert_workspace_member(db, uuid.UUID(workspace_id), user_id)
+
     state = f"{workspace_id}:{user_id}"
     params = urlencode(
         {
@@ -135,19 +174,27 @@ async def github_connect(
             "state": state,
         }
     )
-    return RedirectResponse(
-        url=f"https://github.com/login/oauth/authorize?{params}",
-        status_code=302,
-    )
+    url = f"https://github.com/login/oauth/authorize?{params}"
+    return {"url": url}
 
 
 @router.get("/github/callback")
 async def github_callback(
-    code: str = Query(...),
-    state: str = Query(...),
+    code: str = Query(None),
+    state: str = Query(None),
+    error: str = Query(None),
+    error_description: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Exchange the GitHub OAuth code for an access token and store it."""
+    if error:
+        return RedirectResponse(
+            url=f"{settings.frontend_url}/integrations?error={error_description or error}",
+            status_code=302,
+        )
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
     parts = state.split(":", 1)
     if len(parts) != 2:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
@@ -195,8 +242,11 @@ async def github_callback(
 async def jira_connect(
     workspace_id: str = Query(...),
     user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Redirect the user to Atlassian's OAuth authorization page."""
+    """Return the Jira OAuth authorization URL (frontend navigates to it)."""
+    await _assert_workspace_member(db, uuid.UUID(workspace_id), user_id)
+
     state = f"{workspace_id}:{user_id}"
     params = urlencode(
         {
@@ -209,25 +259,32 @@ async def jira_connect(
             "prompt": "consent",
         }
     )
-    return RedirectResponse(
-        url=f"https://auth.atlassian.com/authorize?{params}",
-        status_code=302,
-    )
+    url = f"https://auth.atlassian.com/authorize?{params}"
+    return {"url": url}
 
 
 @router.get("/jira/callback")
 async def jira_callback(
-    code: str = Query(...),
-    state: str = Query(...),
+    code: str = Query(None),
+    state: str = Query(None),
+    error: str = Query(None),
+    error_description: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Exchange the Jira OAuth code for tokens, fetch cloud_id, and store."""
+    if error:
+        return RedirectResponse(
+            url=f"{settings.frontend_url}/integrations?error={error_description or error}",
+            status_code=302,
+        )
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
     parts = state.split(":", 1)
     if len(parts) != 2:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
     workspace_id_str, _user_id = parts
 
-    # Exchange code for tokens
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_resp = await client.post(
             "https://auth.atlassian.com/oauth/token",
@@ -252,7 +309,6 @@ async def jira_callback(
 
     token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
-    # Fetch accessible resources to get cloud_id
     async with httpx.AsyncClient(timeout=15.0) as client:
         resources_resp = await client.get(
             "https://api.atlassian.com/oauth/token/accessible-resources",
@@ -289,23 +345,38 @@ async def jira_callback(
 # Status & disconnect
 # ---------------------------------------------------------------------------
 
-@router.get("/status", response_model=IntegrationStatus)
+@router.get("/status", response_model=IntegrationStatusFull)
 async def integration_status(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return which integrations are connected for the user's workspace."""
+    """Return which integrations are connected and their saved defaults."""
     workspace_id = await _get_user_workspace_id(user_id, db)
 
     result = await db.execute(
-        select(Integration.provider).where(
-            Integration.workspace_id == workspace_id
-        )
+        select(Integration).where(Integration.workspace_id == workspace_id)
     )
-    providers = {row for row in result.scalars().all()}
-    return IntegrationStatus(
-        has_github="github" in providers,
-        has_jira="jira" in providers,
+    integrations = result.scalars().all()
+
+    has_github = False
+    has_jira = False
+    github_default_repo = None
+    jira_default_project_key = None
+
+    for integ in integrations:
+        meta = integ.metadata_json or {}
+        if integ.provider == "github":
+            has_github = True
+            github_default_repo = meta.get("default_repo")
+        elif integ.provider == "jira":
+            has_jira = True
+            jira_default_project_key = meta.get("default_project_key")
+
+    return IntegrationStatusFull(
+        has_github=has_github,
+        has_jira=has_jira,
+        github_default_repo=github_default_repo,
+        jira_default_project_key=jira_default_project_key,
     )
 
 
@@ -333,55 +404,53 @@ async def disconnect_integration(
         await db.commit()
 
 
+# ---------------------------------------------------------------------------
+# GitHub repos & Jira projects
+# ---------------------------------------------------------------------------
+
 @router.get("/github/repos")
 async def github_repos(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    """List GitHub repos accessible to the connected account."""
     workspace_id = await _get_user_workspace_id(user_id, db)
     integration = await _get_integration(db, workspace_id, "github")
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            "https://api.github.com/user/repos",
-            headers={
-                "Authorization": f"Bearer {integration.access_token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            params={"sort": "updated", "per_page": 30},
-        )
-        resp.raise_for_status()
-        repos = resp.json()
-
-    return [
-        {
-            "full_name": repo["full_name"],
-            "description": repo.get("description"),
-            "default_branch": repo.get("default_branch", "main"),
-        }
-        for repo in repos
-    ]
+    try:
+        repos = await get_user_repos(integration.access_token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="GitHub token is invalid or revoked")
+        raise HTTPException(status_code=502, detail="GitHub API error")
+    return repos
 
 
 @router.get("/jira/projects")
-async def jira_projects(
+async def jira_projects_list(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    """List Jira projects accessible to the connected account."""
     workspace_id = await _get_user_workspace_id(user_id, db)
     integration = await _get_integration(db, workspace_id, "jira")
-
-    metadata = integration.metadata_json or {}
-    cloud_id = metadata.get("cloud_id")
+    cloud_id = (integration.metadata_json or {}).get("cloud_id")
     if not cloud_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing Jira cloud_id in integration metadata",
+            detail="Jira integration is missing cloud_id",
         )
+    try:
+        projects = await get_jira_projects(integration.access_token, cloud_id)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Jira token is invalid or expired")
+        raise HTTPException(status_code=502, detail="Jira API error")
+    return projects
 
-    return await get_jira_projects(integration.access_token, cloud_id)
 
+# ---------------------------------------------------------------------------
+# Defaults (E2 — frontend workspace defaults)
+# ---------------------------------------------------------------------------
 
 @router.get("/defaults", response_model=IntegrationDefaultsResponse)
 async def get_integration_defaults(
@@ -466,3 +535,35 @@ async def update_integration_defaults(
         if jira_integration
         else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Settings (E3 — per-provider metadata update)
+# ---------------------------------------------------------------------------
+
+@router.patch("/{provider}/settings", status_code=status.HTTP_200_OK)
+async def update_integration_settings(
+    provider: str,
+    body: IntegrationSettingsUpdate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update default repo/project in the integration's metadata_json."""
+    if provider not in ("github", "jira"):
+        raise HTTPException(status_code=400, detail="Unknown provider")
+
+    workspace_id = await _get_user_workspace_id(user_id, db)
+    integration = await _get_integration(db, workspace_id, provider)
+
+    meta = dict(integration.metadata_json or {})
+    if provider == "github" and body.default_repo is not None:
+        meta["default_repo"] = body.default_repo
+    if provider == "jira" and body.default_project_key is not None:
+        meta["default_project_key"] = body.default_project_key
+
+    integration.metadata_json = meta
+    flag_modified(integration, "metadata_json")
+    integration.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"status": "ok", "metadata": meta}
