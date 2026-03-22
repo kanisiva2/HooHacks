@@ -3,7 +3,9 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import workspaces, incidents, integrations, tasks, deep_dive, artifacts, ws
+from app.routers import workspaces, incidents, integrations, tasks, deep_dive, ws
+# S3 artifacts router — disabled until AWS credentials are configured.
+# from app.routers import artifacts
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
@@ -29,7 +31,7 @@ app.include_router(incidents.router, prefix="/api", tags=["incidents"])
 app.include_router(integrations.router, prefix="/api", tags=["integrations"])
 app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(deep_dive.router, prefix="/api", tags=["deep-dive"])
-app.include_router(artifacts.router, prefix="/api", tags=["artifacts"])
+# app.include_router(artifacts.router, prefix="/api", tags=["artifacts"])  # S3 disabled
 app.include_router(ws.router, tags=["websocket"])  # no /api prefix — WebSocket path is /ws/{incident_id}
 
 

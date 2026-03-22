@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-import httpx
+# import httpx  # Only needed for S3 artifact export (disabled)
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, update
@@ -16,14 +16,15 @@ from app.models.incident import Incident
 from app.services.event_logger import log_event
 from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
-from app.services.s3 import (
-    get_presigned_url,
-    upload_bytes,
-    upload_text,
-    incident_audio_key,
-    incident_transcript_key,
-    incident_report_key,
-)
+# S3 artifact storage — disabled until AWS credentials are configured.
+# from app.services.s3 import (
+#     get_presigned_url,
+#     upload_bytes,
+#     upload_text,
+#     incident_audio_key,
+#     incident_transcript_key,
+#     incident_report_key,
+# )
 from app.services.skribby import create_bot, detect_service, stop_bot, get_bot
 from app.services.skribby_listener import listen_to_skribby
 
@@ -175,75 +176,59 @@ def _build_report(
     return "\n".join(lines)
 
 
-async def _export_artifacts(incident_id: str, bot_session_id: str | None) -> None:
-    """
-    Background task — runs after the request session closes.
-    Creates its own DB session. Exports transcript, audio, and report to S3,
-    then updates the incident row with the S3 keys.
-    """
-    from app.database import async_session_maker
-    from app.models.deep_dive import DeepDiveResult
-
-    async with async_session_maker() as db:
-        try:
-            incident = await _get_incident_or_404(db, uuid.UUID(incident_id))
-
-            # 1 ── Transcript export ──────────────────────────────────────
-            chunks_result = await db.execute(
-                select(TranscriptChunk)
-                .where(TranscriptChunk.incident_id == uuid.UUID(incident_id))
-                .order_by(TranscriptChunk.start_ts.asc().nulls_last())
-            )
-            chunks = chunks_result.scalars().all()
-            transcript_text = "\n".join(
-                f"[{c.start_ts or '?'}] {c.speaker}: {c.text}"
-                for c in chunks if c.text
-            )
-            t_key = incident_transcript_key(incident_id)
-            await upload_text(t_key, transcript_text)
-            incident.transcript_s3_key = t_key
-            logger.info("Transcript exported to S3 for incident %s", incident_id)
-
-            # 2 ── Audio download from Skribby ────────────────────────────
-            if bot_session_id:
-                try:
-                    recording_url = await _poll_recording_url(bot_session_id)
-                    if recording_url:
-                        async with httpx.AsyncClient(timeout=60.0) as client:
-                            resp = await client.get(recording_url)
-                            resp.raise_for_status()
-                        a_key = incident_audio_key(incident_id)
-                        await upload_bytes(a_key, resp.content, "audio/webm")
-                        incident.audio_s3_key = a_key
-                        logger.info("Audio exported to S3 for incident %s", incident_id)
-                    else:
-                        logger.warning("No recording URL — audio export skipped for incident %s", incident_id)
-                except Exception as exc:
-                    logger.warning("Audio export failed for incident %s: %s", incident_id, exc)
-
-            # 3 ── Report generation ──────────────────────────────────────
-            tasks_result = await db.execute(
-                select(ActionItem).where(ActionItem.incident_id == uuid.UUID(incident_id))
-            )
-            tasks = tasks_result.scalars().all()
-
-            dd_result = await db.execute(
-                select(DeepDiveResult)
-                .where(DeepDiveResult.incident_id == uuid.UUID(incident_id))
-                .order_by(DeepDiveResult.rank.asc())
-            )
-            dd_rows = dd_result.scalars().all()
-
-            report_md = _build_report(incident, chunks, tasks, dd_rows)
-            r_key = incident_report_key(incident_id)
-            await upload_text(r_key, report_md)
-            incident.report_s3_key = r_key
-            logger.info("Report exported to S3 for incident %s", incident_id)
-
-            await db.commit()
-
-        except Exception as exc:
-            logger.exception("_export_artifacts failed for incident %s: %s", incident_id, exc)
+# S3 artifact export — disabled until AWS credentials are configured.
+# To re-enable: uncomment this function, the S3 imports above, and the
+# asyncio.create_task(_export_artifacts(...)) call in update_incident.
+#
+# async def _export_artifacts(incident_id: str, bot_session_id: str | None) -> None:
+#     """Background task — exports transcript, audio, and report to S3."""
+#     from app.database import async_session_maker
+#     from app.models.deep_dive import DeepDiveResult
+#     async with async_session_maker() as db:
+#         try:
+#             incident = await _get_incident_or_404(db, uuid.UUID(incident_id))
+#             chunks_result = await db.execute(
+#                 select(TranscriptChunk)
+#                 .where(TranscriptChunk.incident_id == uuid.UUID(incident_id))
+#                 .order_by(TranscriptChunk.start_ts.asc().nulls_last())
+#             )
+#             chunks = chunks_result.scalars().all()
+#             transcript_text = "\n".join(
+#                 f"[{c.start_ts or '?'}] {c.speaker}: {c.text}"
+#                 for c in chunks if c.text
+#             )
+#             t_key = incident_transcript_key(incident_id)
+#             await upload_text(t_key, transcript_text)
+#             incident.transcript_s3_key = t_key
+#             if bot_session_id:
+#                 try:
+#                     recording_url = await _poll_recording_url(bot_session_id)
+#                     if recording_url:
+#                         async with httpx.AsyncClient(timeout=60.0) as client:
+#                             resp = await client.get(recording_url)
+#                             resp.raise_for_status()
+#                         a_key = incident_audio_key(incident_id)
+#                         await upload_bytes(a_key, resp.content, "audio/webm")
+#                         incident.audio_s3_key = a_key
+#                 except Exception as exc:
+#                     logger.warning("Audio export failed: %s", exc)
+#             tasks_result = await db.execute(
+#                 select(ActionItem).where(ActionItem.incident_id == uuid.UUID(incident_id))
+#             )
+#             tasks = tasks_result.scalars().all()
+#             dd_result = await db.execute(
+#                 select(DeepDiveResult)
+#                 .where(DeepDiveResult.incident_id == uuid.UUID(incident_id))
+#                 .order_by(DeepDiveResult.rank.asc())
+#             )
+#             dd_rows = dd_result.scalars().all()
+#             report_md = _build_report(incident, chunks, tasks, dd_rows)
+#             r_key = incident_report_key(incident_id)
+#             await upload_text(r_key, report_md)
+#             incident.report_s3_key = r_key
+#             await db.commit()
+#         except Exception as exc:
+#             logger.exception("_export_artifacts failed for incident %s: %s", incident_id, exc)
 
 
 # ── Endpoints ──
@@ -384,11 +369,10 @@ async def update_incident(
                         incident_id, incident.bot_session_id, exc,
                     )
 
-            # Kick off artifact export as a background task.
-            # Passes only primitive values — the request session closes after this returns.
-            asyncio.create_task(
-                _export_artifacts(str(incident_id), incident.bot_session_id)
-            )
+            # S3 artifact export — disabled until AWS credentials are configured.
+            # asyncio.create_task(
+            #     _export_artifacts(str(incident_id), incident.bot_session_id)
+            # )
 
     await db.commit()
     return IncidentResponse.model_validate(incident)
@@ -424,33 +408,27 @@ async def get_transcript(
     ]
 
 
-@router.get("/incidents/{incident_id}/artifacts")
-async def get_artifacts(
-    incident_id: uuid.UUID,
-    user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """
-    Return pre-signed S3 URLs for any artifacts attached to the incident.
-    Keys are None when the artifact hasn't been uploaded yet.
-    """
-    incident = await _get_incident_or_404(db, incident_id)
-    await _assert_workspace_member(db, incident.workspace_id, user_id)
-
-    async def _safe_presigned(key: str | None) -> str | None:
-        if not key:
-            return None
-        try:
-            return await get_presigned_url(key)
-        except Exception:
-            return None
-
-    audio_url = await _safe_presigned(incident.audio_s3_key)
-    transcript_url = await _safe_presigned(incident.transcript_s3_key)
-    report_url = await _safe_presigned(incident.report_s3_key)
-
-    return {
-        "audio_url": audio_url,
-        "transcript_url": transcript_url,
-        "report_url": report_url,
-    }
+# S3 artifacts endpoint — disabled until AWS credentials are configured.
+# @router.get("/incidents/{incident_id}/artifacts")
+# async def get_artifacts(
+#     incident_id: uuid.UUID,
+#     user_id: str = Depends(get_current_user_id),
+#     db: AsyncSession = Depends(get_db),
+# ) -> dict[str, Any]:
+#     incident = await _get_incident_or_404(db, incident_id)
+#     await _assert_workspace_member(db, incident.workspace_id, user_id)
+#     async def _safe_presigned(key: str | None) -> str | None:
+#         if not key:
+#             return None
+#         try:
+#             return await get_presigned_url(key)
+#         except Exception:
+#             return None
+#     audio_url = await _safe_presigned(incident.audio_s3_key)
+#     transcript_url = await _safe_presigned(incident.transcript_s3_key)
+#     report_url = await _safe_presigned(incident.report_s3_key)
+#     return {
+#         "audio_url": audio_url,
+#         "transcript_url": transcript_url,
+#         "report_url": report_url,
+#     }
