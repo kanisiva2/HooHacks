@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +51,7 @@ export default function LoginPage() {
   const supabase = useSupabase();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   const form = useForm<AuthForm>({
     resolver: zodResolver(authSchema),
@@ -94,6 +98,8 @@ export default function LoginPage() {
       return;
     }
 
+    setMode("signin");
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -119,68 +125,160 @@ export default function LoginPage() {
       return;
     }
 
+    setMode("signup");
     router.replace("/onboarding");
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Sign In To Sprynt</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="space-y-4"
-            onSubmit={form.handleSubmit(handleSignIn)}
-            noValidate
-          >
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="email">
-                Email
-              </label>
-              <Input id="email" type="email" {...form.register("email")} />
-              {form.formState.errors.email ? (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.email.message}
-                </p>
-              ) : null}
-            </div>
+    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(245,118,87,0.14),_transparent_28%),radial-gradient(circle_at_85%_18%,_rgba(0,180,170,0.12),_transparent_24%),linear-gradient(180deg,_#f7f3eb_0%,_#f2efe8_42%,_#ece9e1_100%)] text-slate-950">
+      <div className="landing-grid pointer-events-none absolute inset-0 opacity-60" />
+      <div className="landing-orb absolute left-[-7rem] top-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(245,118,87,0.24),_transparent_68%)] blur-3xl" />
+      <div className="landing-orb absolute right-[-4rem] top-28 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(0,166,160,0.18),_transparent_68%)] blur-3xl" />
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="password">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                {...form.register("password")}
-              />
-              {form.formState.errors.password ? (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.password.message}
-                </p>
-              ) : null}
+      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6 md:px-10 lg:px-12">
+        <header className="mb-10 flex items-center justify-between gap-4 rounded-full border border-white/60 bg-white/55 px-4 py-3 backdrop-blur-xl md:px-6">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
+              S
             </div>
-
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button className="flex-1" disabled={isSubmitting} type="submit">
-                {isSubmitting ? "Signing in..." : "Sign In"}
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={isSubmitting}
-                onClick={form.handleSubmit(handleSignUp)}
-                type="button"
-                variant="outline"
-              >
-                {isSubmitting ? "Creating account..." : "Sign Up"}
-              </Button>
+            <div>
+              <p className="text-sm font-semibold tracking-[0.2em] uppercase text-slate-900">
+                Sprynt
+              </p>
+              <p className="text-xs text-slate-600">AI Incident Operator</p>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          </Link>
+
+          <Button nativeButton={false} variant="ghost" render={<Link href="/" />}>
+            <ArrowLeft className="mr-1" />
+            Back Home
+          </Button>
+        </header>
+
+        <section className="grid flex-1 items-center gap-10 lg:grid-cols-[0.98fr_1.02fr]">
+          <div className="flex justify-center lg:justify-start">
+            <div className="flex max-w-2xl flex-col justify-center">
+            <Badge
+              variant="outline"
+              className="mb-5 rounded-full border-slate-300/80 bg-white/75 px-4 py-1 text-[11px] tracking-[0.22em] uppercase text-slate-700"
+            >
+              Operator Access
+            </Badge>
+
+            <h1 className="text-5xl font-semibold leading-[0.94] tracking-[-0.06em] text-slate-950 md:text-6xl">
+              Walk back into the
+              <span className="block text-[rgba(219,87,52,0.96)]">incident room with context.</span>
+            </h1>
+
+            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-700">
+              Sign in to reopen live incidents, review action items, and keep the meeting,
+              transcript, and code investigation in one place.
+            </p>
+          </div>
+          </div>
+
+          <div className="landing-float-delayed relative mx-auto w-full max-w-lg">
+            <Card className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/72 p-2 shadow-[0_28px_80px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+              <div className="rounded-[1.6rem] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(248,245,238,0.94)_100%)] p-6 md:p-7">
+                <CardHeader className="px-0 pt-0">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <Badge variant="outline" className="rounded-full bg-white/75 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-600">
+                      {mode === "signin" ? "Return To Console" : "Create Operator Access"}
+                    </Badge>
+                    <div className="rounded-full border border-slate-200 bg-white/75 px-3 py-1 text-xs text-slate-600">
+                      Secure auth
+                    </div>
+                  </div>
+                  <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">
+                    {mode === "signin" ? "Sign In To Sprynt" : "Create Your Account"}
+                  </CardTitle>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">
+                    {mode === "signin"
+                      ? "Rejoin your dashboard, incident rooms, and live investigation streams."
+                      : "Set up your account and continue into onboarding for integrations and workspace setup."}
+                  </p>
+                </CardHeader>
+
+                <CardContent className="px-0 pb-0">
+                  <form
+                    className="space-y-5"
+                    onSubmit={form.handleSubmit(handleSignIn)}
+                    noValidate
+                  >
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="email">
+                        Email
+                      </label>
+                      <Input
+                        id="email"
+                        type="email"
+                        className="h-12 rounded-2xl border-slate-200 bg-white/85 px-4 shadow-none"
+                        {...form.register("email")}
+                      />
+                      {form.formState.errors.email ? (
+                        <p className="text-sm text-destructive">
+                          {form.formState.errors.email.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-800" htmlFor="password">
+                        Password
+                      </label>
+                      <Input
+                        id="password"
+                        type="password"
+                        className="h-12 rounded-2xl border-slate-200 bg-white/85 px-4 shadow-none"
+                        {...form.register("password")}
+                      />
+                      {form.formState.errors.password ? (
+                        <p className="text-sm text-destructive">
+                          {form.formState.errors.password.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {error ? (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {error}
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Button
+                        className="h-12 rounded-2xl text-base shadow-[0_14px_30px_rgba(15,23,42,0.12)]"
+                        disabled={isSubmitting}
+                        type="submit"
+                        onClick={() => setMode("signin")}
+                      >
+                        {isSubmitting && mode === "signin" ? "Signing in..." : "Sign In"}
+                      </Button>
+                      <Button
+                        className="h-12 rounded-2xl border-slate-200 bg-white/85 text-base"
+                        disabled={isSubmitting}
+                        onClick={form.handleSubmit(handleSignUp)}
+                        type="button"
+                        variant="outline"
+                      >
+                        {isSubmitting && mode === "signup" ? "Creating account..." : "Sign Up"}
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-4 text-xs text-slate-500">
+                      <span>Protected by Supabase auth</span>
+                      <span className="inline-flex items-center gap-1">
+                        Continue
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </form>
+                </CardContent>
+              </div>
+            </Card>
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }
