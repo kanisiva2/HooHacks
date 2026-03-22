@@ -16,28 +16,29 @@ export function PanelErrorBoundary({
   children,
 }: PanelErrorBoundaryProps) {
   return (
-    <ErrorBoundary
-      fallbackRender={({ resetErrorBoundary }) => (
-        <Card className={className}>
-          <CardHeader>
-            <CardTitle>{panelName} unavailable</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              This panel hit an unexpected error. Refresh the panel or reload the page.
-            </p>
-            <Button size="sm" variant="outline" onClick={resetErrorBoundary}>
-              Try again
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-      onError={(error, info) => {
-        console.error(`PanelErrorBoundary(${panelName})`, error, info)
-      }}
-    >
-      {children}
-    </ErrorBoundary>
+    <div className={className}>
+      <ErrorBoundary
+        fallbackRender={({ resetErrorBoundary }) => (
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>{panelName} unavailable</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                This panel hit an unexpected error. Refresh the panel or reload the page.
+              </p>
+              <Button size="sm" variant="outline" onClick={resetErrorBoundary}>
+                Try again
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+        onError={(error, info) => {
+          console.error(`PanelErrorBoundary(${panelName})`, error, info)
+        }}
+      >
+        {children}
+      </ErrorBoundary>
+    </div>
   )
 }
-

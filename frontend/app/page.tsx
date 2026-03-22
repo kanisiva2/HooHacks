@@ -3,13 +3,15 @@ import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 import {
   ArrowRight,
   Bot,
-  Cable,
   GitBranch,
   MessageSquareMore,
   Mic,
   ListChecks,
   Search,
   Monitor,
+  Shield,
+  Clock,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LandingNav } from "@/components/landing/LandingNav";
@@ -43,12 +45,6 @@ const featureCards = [
   },
 ];
 
-const workflow = [
-  "Joins Zoom, Meet, or Teams and starts listening.",
-  "Picks out owners, decisions, and code signals as they come up.",
-  "Pushes everything to a shared dashboard in real time.",
-];
-
 export default function Home() {
   return (
     <main
@@ -61,19 +57,21 @@ export default function Home() {
       <LandingNav />
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-12 pt-32 md:px-10 lg:px-12">
-        <section className="grid flex-1 items-center gap-12 pb-12 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="max-w-2xl">
+        {/* Hero */}
+        <section className="flex flex-1 flex-col items-center gap-10 pb-12">
+          {/* Text block — full width, centered */}
+          <div className="max-w-3xl text-center">
             <h1 className="font-[var(--font-landing-heading)] text-5xl font-semibold leading-[0.92] tracking-[-0.06em] text-slate-950 md:text-7xl">
               You handle the call.
               <span className="block text-[rgba(219,87,52,0.96)]">Sprynt handles the rest.</span>
             </h1>
 
-            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-700 md:text-xl">
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-700 md:text-xl">
               Sprynt sits in the meeting, tracks the conversation, syncs tasks to Jira, and
-              looks into the repo while your team is still talking.
+              investigates your repo — all while your team is still talking.
             </p>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button
                 nativeButton={false}
                 size="lg"
@@ -93,39 +91,19 @@ export default function Home() {
                 See How It Works
               </Button>
             </div>
-
-            <div className="mt-10 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-3xl border border-white/70 bg-white/65 p-4 backdrop-blur-sm">
-                <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Meeting
-                </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">Joins as an operator</p>
-              </div>
-              <div className="rounded-3xl border border-white/70 bg-white/65 p-4 backdrop-blur-sm">
-                <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Tasks
-                </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">Talk becomes action items</p>
-              </div>
-              <div className="rounded-3xl border border-white/70 bg-white/65 p-4 backdrop-blur-sm">
-                <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Evidence
-                </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">Suspect code found live</p>
-              </div>
-            </div>
           </div>
 
-          <div className="relative lg:pl-4 lg:pt-4">
-            <div className="landing-float relative mx-auto max-w-2xl rounded-[2rem] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(19,27,45,0.97)_0%,rgba(18,24,38,0.94)_100%)] p-4 text-slate-100 shadow-[0_40px_100px_rgba(15,23,42,0.28)]">
+          {/* Dashboard mock — matches the actual 3-column incident room */}
+          <div className="relative w-full">
+            <div className="landing-float relative mx-auto max-w-5xl rounded-[2rem] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(19,27,45,0.97)_0%,rgba(18,24,38,0.94)_100%)] p-4 text-slate-100 shadow-[0_40px_100px_rgba(15,23,42,0.28)]">
               <div className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-white/60 to-transparent" />
 
               {/* Header bar */}
               <div className="mb-3 flex items-center justify-between px-2 pt-1">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-md bg-white/10 text-[8px] font-bold text-white/70">S</div>
                   <p className="text-sm font-semibold text-white/90">Payments API latency spike</p>
-                  <span className="rounded-full bg-red-400/20 px-2 py-0.5 text-[10px] font-medium text-red-300">SEV1</span>
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-400">active</span>
+                  <span className="rounded-full bg-red-400/20 px-2 py-0.5 text-[10px] font-medium text-red-300">P1</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
@@ -133,97 +111,151 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Two-column layout */}
-              <div className="grid gap-3 lg:grid-cols-2">
+              {/* Three-column layout matching actual app */}
+              <div className="grid grid-cols-[0.7fr_1.4fr_0.9fr] gap-2">
 
-                {/* Transcript panel */}
+                {/* Transcript panel — narrow with speaker initials */}
                 <div className="rounded-xl border border-white/10 bg-white/5">
-                  <div className="border-b border-white/8 px-3 py-2">
-                    <p className="text-xs font-medium text-white/70">Transcript</p>
+                  <div className="flex items-center gap-1.5 border-b border-white/8 px-2.5 py-1.5">
+                    <div className="flex h-4 w-4 items-center justify-center rounded bg-sky-500/20">
+                      <Mic className="h-2.5 w-2.5 text-sky-400" />
+                    </div>
+                    <p className="text-[10px] font-medium text-white/70">Transcript</p>
                   </div>
-                  <div className="space-y-3 p-3 text-[12px]">
-                    <div>
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="font-semibold text-white/90">Owen</span>
-                        <span className="text-[10px] text-slate-500">2m ago</span>
+                  <div className="space-y-2 p-2.5 text-[11px]">
+                    <div className="flex items-start gap-1.5">
+                      <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-[7px] font-bold text-blue-300">O</div>
+                      <div>
+                        <span className="font-semibold text-white/80">Owen</span>
+                        <p className="text-slate-400">Error rates spiking after the queue deploy.</p>
                       </div>
-                      <p className="text-slate-300">Error rates spiking after the queue deploy. Sprynt, track rollback owner.</p>
                     </div>
-                    <div>
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="font-semibold text-white/90">Nina</span>
-                        <span className="text-[10px] text-slate-500">1m ago</span>
+                    <div className="flex items-start gap-1.5">
+                      <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[7px] font-bold text-amber-300">N</div>
+                      <div>
+                        <span className="font-semibold text-white/80">Nina</span>
+                        <p className="text-slate-400">I can take the rollback.</p>
                       </div>
-                      <p className="text-slate-300">I can take the rollback. Checking the consumer logs now.</p>
                     </div>
-                    <div>
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="font-semibold text-white/90">Alex</span>
-                        <span className="text-[10px] text-slate-500">30s ago</span>
+                    <div className="flex items-start gap-1.5">
+                      <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[7px] font-bold text-emerald-300">A</div>
+                      <div>
+                        <span className="font-semibold text-white/80">Alex</span>
+                        <p className="text-slate-400">Deploy window looks clear after 4pm.</p>
                       </div>
-                      <p className="text-slate-300">Deploy window looks clear after 4pm, we can push a fix then.</p>
                     </div>
-                    <div className="italic text-slate-500">
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="font-semibold not-italic text-white/60">Owen</span>
-                        <span className="text-[10px] not-italic text-slate-600">just now</span>
+                    <div className="flex items-start gap-1.5 opacity-50">
+                      <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-[7px] font-bold text-blue-300">O</div>
+                      <div>
+                        <span className="font-semibold text-white/60">Owen</span>
+                        <p className="italic text-slate-500">Let me check the retry...</p>
                       </div>
-                      <p>Let me check the retry logic in...</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Task board panel */}
+                {/* Task board panel — wider with two columns */}
                 <div className="rounded-xl border border-white/10 bg-white/5">
-                  <div className="border-b border-white/8 px-3 py-2">
-                    <p className="text-xs font-medium text-white/70">Task Board</p>
+                  <div className="flex items-center gap-1.5 border-b border-white/8 px-2.5 py-1.5">
+                    <div className="flex h-4 w-4 items-center justify-center rounded bg-amber-500/20">
+                      <ListChecks className="h-2.5 w-2.5 text-amber-400" />
+                    </div>
+                    <p className="text-[10px] font-medium text-white/70">Task Board</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 p-3">
-                    {/* Proposed column */}
+                  <div className="grid grid-cols-2 gap-2 p-2.5">
+                    {/* Proposed */}
                     <div className="rounded-lg bg-white/4 p-2">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[11px] font-semibold text-slate-400">Proposed</p>
-                        <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] text-slate-500">2</span>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-slate-400">Proposed</p>
+                        <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[8px] text-slate-500">2</span>
                       </div>
-                      <div className="space-y-2">
-                        <div className="rounded-md border border-white/8 bg-white/5 p-2.5">
-                          <p className="text-[11px] font-medium text-white/80">Rollback queue consumer</p>
-                          <div className="mt-1.5 flex gap-1">
-                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] text-slate-400">Nina</span>
-                            <span className="rounded-full bg-orange-400/15 px-1.5 py-0.5 text-[9px] text-orange-300">high</span>
+                      <div className="space-y-1.5">
+                        <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                          <p className="text-[10px] font-medium text-white/80">Rollback queue consumer</p>
+                          <div className="mt-1 flex gap-1">
+                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[8px] text-slate-400">Nina</span>
+                            <span className="rounded-full bg-orange-400/15 px-1.5 py-0.5 text-[8px] text-orange-300">72%</span>
                           </div>
-                          <div className="mt-2 flex gap-1">
-                            <span className="rounded bg-white/12 px-2 py-0.5 text-[9px] font-medium text-white/70">Approve</span>
-                            <span className="rounded bg-white/6 px-2 py-0.5 text-[9px] text-slate-400">Dismiss</span>
+                          <div className="mt-1.5 flex gap-1">
+                            <span className="rounded bg-white/12 px-1.5 py-0.5 text-[8px] font-medium text-white/70">Approve</span>
+                            <span className="rounded bg-white/6 px-1.5 py-0.5 text-[8px] text-slate-400">Dismiss</span>
                           </div>
                         </div>
-                        <div className="rounded-md border border-white/8 bg-white/5 p-2.5">
-                          <p className="text-[11px] font-medium text-white/80">Check retry backoff config</p>
-                          <div className="mt-1.5 flex gap-1">
-                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] text-slate-400">Owen</span>
-                            <span className="rounded-full bg-yellow-400/15 px-1.5 py-0.5 text-[9px] text-yellow-300">med</span>
+                        <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                          <p className="text-[10px] font-medium text-white/80">Check retry backoff config</p>
+                          <div className="mt-1 flex gap-1">
+                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[8px] text-slate-400">Owen</span>
+                            <span className="rounded-full bg-yellow-400/15 px-1.5 py-0.5 text-[8px] text-yellow-300">58%</span>
                           </div>
-                          <div className="mt-2 flex gap-1">
-                            <span className="rounded bg-white/12 px-2 py-0.5 text-[9px] font-medium text-white/70">Approve</span>
-                            <span className="rounded bg-white/6 px-2 py-0.5 text-[9px] text-slate-400">Dismiss</span>
+                          <div className="mt-1.5 flex gap-1">
+                            <span className="rounded bg-white/12 px-1.5 py-0.5 text-[8px] font-medium text-white/70">Approve</span>
+                            <span className="rounded bg-white/6 px-1.5 py-0.5 text-[8px] text-slate-400">Dismiss</span>
                           </div>
                         </div>
                       </div>
                     </div>
-                    {/* Synced column */}
+                    {/* Synced */}
                     <div className="rounded-lg bg-white/4 p-2">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[11px] font-semibold text-slate-400">Synced</p>
-                        <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] text-slate-500">1</span>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-slate-400">Synced</p>
+                        <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[8px] text-slate-500">1</span>
                       </div>
-                      <div className="space-y-2">
-                        <div className="rounded-md border border-white/8 bg-white/5 p-2.5">
-                          <p className="text-[11px] font-medium text-white/80">Confirm safe deploy window</p>
-                          <div className="mt-1.5 flex gap-1">
-                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] text-slate-400">Alex</span>
+                      <div className="space-y-1.5">
+                        <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                          <p className="text-[10px] font-medium text-white/80">Confirm safe deploy window</p>
+                          <div className="mt-1 flex gap-1">
+                            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[8px] text-slate-400">Alex</span>
                           </div>
-                          <p className="mt-1.5 text-[9px] text-blue-400">PAYS-421</p>
+                          <p className="mt-1 text-[9px] font-medium text-blue-400">PAYS-421</p>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deep dive panel */}
+                <div className="rounded-xl border border-white/10 bg-white/5">
+                  <div className="flex items-center gap-1.5 border-b border-white/8 px-2.5 py-1.5">
+                    <div className="flex h-4 w-4 items-center justify-center rounded bg-violet-500/20">
+                      <Search className="h-2.5 w-2.5 text-violet-400" />
+                    </div>
+                    <p className="text-[10px] font-medium text-white/70">Deep Dive</p>
+                  </div>
+                  <div className="space-y-1.5 p-2.5">
+                    <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex h-4 w-4 items-center justify-center rounded bg-violet-500/20 text-[8px] font-bold text-violet-300">1</span>
+                        <p className="truncate text-[10px] font-medium text-white/80">src/queue/consumer.ts</p>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <div className="h-1 flex-1 rounded-full bg-white/10">
+                          <div className="h-1 w-[87%] rounded-full bg-violet-400/60" />
+                        </div>
+                        <span className="text-[8px] text-slate-400">87%</span>
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex h-4 w-4 items-center justify-center rounded bg-violet-500/20 text-[8px] font-bold text-violet-300">2</span>
+                        <p className="truncate text-[10px] font-medium text-white/80">src/config/retry.ts</p>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <div className="h-1 flex-1 rounded-full bg-white/10">
+                          <div className="h-1 w-[64%] rounded-full bg-violet-400/60" />
+                        </div>
+                        <span className="text-[8px] text-slate-400">64%</span>
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-white/8 bg-white/5 p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex h-4 w-4 items-center justify-center rounded bg-violet-500/20 text-[8px] font-bold text-violet-300">3</span>
+                        <p className="truncate text-[10px] font-medium text-white/80">src/deploy/rollback.ts</p>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <div className="h-1 flex-1 rounded-full bg-white/10">
+                          <div className="h-1 w-[41%] rounded-full bg-violet-400/60" />
+                        </div>
+                        <span className="text-[8px] text-slate-400">41%</span>
                       </div>
                     </div>
                   </div>
@@ -231,22 +263,32 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="landing-float-delayed absolute -bottom-8 -left-4 rounded-[1.75rem] border border-slate-200/80 bg-white/85 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.12)] backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-teal-100 p-2 text-teal-700">
-                  <Cable className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="font-[var(--font-landing-mono)] text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                    Connected
-                  </p>
-                  <p className="text-sm font-medium text-slate-900">Meeting, Jira, GitHub</p>
-                </div>
-              </div>
+          </div>
+
+          {/* Stat pills */}
+          <div className="mt-12 grid gap-3 sm:grid-cols-3 md:max-w-2xl md:mx-auto">
+            <div className="rounded-3xl border border-white/70 bg-white/65 p-4 text-center backdrop-blur-sm">
+              <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
+                Meeting
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-900">Joins as an operator</p>
+            </div>
+            <div className="rounded-3xl border border-white/70 bg-white/65 p-4 text-center backdrop-blur-sm">
+              <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
+                Tasks
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-900">Talk becomes action items</p>
+            </div>
+            <div className="rounded-3xl border border-white/70 bg-white/65 p-4 text-center backdrop-blur-sm">
+              <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.2em] text-slate-500">
+                Evidence
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-900">Suspect code found live</p>
             </div>
           </div>
         </section>
 
+        {/* Feature cards */}
         <section className="grid gap-4 border-t border-slate-300/70 py-8 md:grid-cols-3">
           {featureCards.map((item) => {
             const Icon = item.icon;
@@ -267,6 +309,7 @@ export default function Home() {
           })}
         </section>
 
+        {/* How It Works */}
         <section id="flow" className="scroll-mt-28 py-12">
           <p className="text-center font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.22em] text-slate-500">
             How It Works
@@ -282,29 +325,29 @@ export default function Home() {
               {[
                 {
                   icon: Mic,
-                  title: "Joins the meeting",
-                  desc: "A bot hops into the call through Skribby and starts streaming a speaker-labeled transcript.",
+                  title: "Bot joins the meeting",
+                  desc: "Joins the call in seconds and streams a speaker-labeled transcript live.",
                   color: "bg-teal-100 text-teal-700",
                   side: "left" as const,
                 },
                 {
                   icon: ListChecks,
-                  title: "Extracts tasks",
-                  desc: "Picks up assignments from the conversation, waits for them to settle, then syncs them to Jira.",
+                  title: "Tasks extracted and synced",
+                  desc: "Picks up assignments, stabilizes them, and pushes approved items to Jira.",
                   color: "bg-orange-100 text-orange-700",
                   side: "right" as const,
                 },
                 {
                   icon: Search,
-                  title: "Investigates the repo",
-                  desc: "Looks at recent commits, ranks the most likely files, and flags suspect lines.",
+                  title: "Code investigation runs live",
+                  desc: "Ranks suspect files from recent commits and highlights likely lines.",
                   color: "bg-sky-100 text-sky-700",
                   side: "left" as const,
                 },
                 {
                   icon: Monitor,
-                  title: "Streams to the dashboard",
-                  desc: "Transcript, tasks, and code evidence show up in a shared view your whole team can see.",
+                  title: "Everything streams to one view",
+                  desc: "Transcript, tasks, and evidence update live on a shared dashboard.",
                   color: "bg-violet-100 text-violet-700",
                   side: "right" as const,
                 },
@@ -343,29 +386,44 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="grid gap-6 py-8 lg:grid-cols-[0.85fr_1.15fr]">
+        {/* Why Teams Use It */}
+        <section className="grid gap-6 py-8 lg:grid-cols-[1fr_1fr]">
           <div className="rounded-[2rem] border border-slate-300/70 bg-slate-950 p-8 text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
             <p className="font-[var(--font-landing-mono)] text-xs uppercase tracking-[0.22em] text-white/55">
               Why Teams Use It
             </p>
             <p className="mt-4 font-[var(--font-landing-heading)] text-3xl font-semibold leading-tight">
-              Nothing gets dropped. Everyone stays on the same page.
+              Nothing gets dropped. Everyone stays aligned.
             </p>
-            <p className="mt-4 max-w-md text-sm leading-7 text-white/70">
-              Built for the moment when your team is on a live call, jumping between the repo, and trying to keep track of who owns what.
-            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <Clock className="mb-2 h-4 w-4 text-white/50" />
+                <p className="text-[13px] font-medium text-white/90">Faster resolution</p>
+                <p className="mt-1 text-[11px] text-white/50">Evidence surfaces during the call.</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <Shield className="mb-2 h-4 w-4 text-white/50" />
+                <p className="text-[13px] font-medium text-white/90">Nothing lost</p>
+                <p className="mt-1 text-[11px] text-white/50">Every task captured and synced.</p>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            {workflow.map((step, index) => (
+            {[
+              { label: "Join", text: "Bot enters the meeting and starts listening." },
+              { label: "Extract", text: "Tasks synced to Jira, code investigated live." },
+              { label: "Stream", text: "Everything shows up on a shared dashboard." },
+            ].map((step, index) => (
               <div
-                key={step}
+                key={step.label}
                 className="rounded-[1.75rem] border border-slate-300/70 bg-white/68 p-5 backdrop-blur-sm"
               >
                 <p className="font-[var(--font-landing-mono)] text-[11px] uppercase tracking-[0.2em] text-slate-500">
                   0{index + 1}
                 </p>
-                <p className="mt-4 text-sm leading-7 text-slate-800">{step}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-900">{step.label}</p>
+                <p className="mt-2 text-sm leading-7 text-slate-700">{step.text}</p>
               </div>
             ))}
           </div>
