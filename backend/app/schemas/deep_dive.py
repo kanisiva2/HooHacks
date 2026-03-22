@@ -47,3 +47,37 @@ class DeepDiveResultOut(BaseModel):
             data.setdefault("suspect_lines_start", lines.get("start") if isinstance(lines, dict) else None)
             data.setdefault("suspect_lines_end", lines.get("end") if isinstance(lines, dict) else None)
         return data
+
+
+class FixSuggestionOut(BaseModel):
+    incident_id: UUID
+    result_id: UUID
+    repo_full_name: str
+    file_path: str
+    line_start: int
+    line_end: int
+    summary: str
+    rationale: str
+    risk_notes: str
+    replacement_code: str
+    original_code: str
+    updated_code: str
+    diff: str
+    file_sha: str
+    base_branch: str
+
+
+class ApplyFixSuggestionRequest(BaseModel):
+    replacement_code: str
+    summary: str
+    rationale: str
+    risk_notes: str
+    file_sha: str
+    open_pr: bool = False
+
+
+class ApplyFixSuggestionResponse(BaseModel):
+    branch_name: str
+    commit_sha: str | None = None
+    pull_request_url: str | None = None
+    pull_request_number: int | None = None

@@ -13,6 +13,7 @@ import logging
 import time
 import uuid
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException
@@ -182,11 +183,23 @@ async def get_file_content(
     token: str, repo_full_name: str, file_path: str,
 ) -> str:
     """Fetch a single file's content, base64-decoded to a UTF-8 string."""
-    url = f"{GITHUB_API}/repos/{repo_full_name}/contents/{file_path}"
+    data = await get_file_content_with_metadata(token, repo_full_name, file_path)
+    return data["content"]
+
+
+async def get_file_content_with_metadata(
+    token: str, repo_full_name: str, file_path: str,
+) -> dict[str, Any]:
+    """Fetch a single file's content and metadata from the contents API."""
+    url = f"{GITHUB_API}/repos/{repo_full_name}/contents/{quote(file_path, safe='/')}"
     resp = await _github_request("GET", url, token)
     data = resp.json()
     raw = base64.b64decode(data["content"])
-    return raw.decode("utf-8", errors="replace")
+    return {
+        "content": raw.decode("utf-8", errors="replace"),
+        "sha": data["sha"],
+        "path": data["path"],
+    }
 
 
 async def get_recent_commits(
@@ -232,6 +245,94 @@ async def get_commit_diff(token: str, repo_full_name: str, sha: str) -> str:
     hdrs["Accept"] = "application/vnd.github.diff"
     resp = await _github_request("GET", url, token, headers_override=hdrs)
     return resp.text[:MAX_DIFF_CHARS]
+
+
+async def get_repo_details(token: str, repo_full_name: str) -> dict[str, Any]:
+    url = f"{GITHUB_API}/repos/{repo_full_name}"
+    resp = await _github_request("GET", url, token)
+    return resp.json()
+
+
+async def get_branch_head_sha(token: str, repo_full_name: str, branch: str) -> str:
+    url = f"{GITHUB_API}/repos/{repo_full_name}/git/ref/heads/{quote(branch, safe='')}"
+    resp = await _github_request("GET", url, token)
+    data = resp.json()
+    return data["object"]["sha"]
+
+
+async def create_branch_ref(
+    token: str,
+    repo_full_name: str,
+    branch_name: str,
+    from_sha: str,
+) -> dict[str, Any]:
+    url = f"{GITHUB_API}/repos/{repo_full_name}/git/refs"
+    async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client:
+        resp = await client.post(
+            url,
+            headers=_headers(token),
+            json={
+                "ref": f"refs/heads/{branch_name}",
+                "sha": from_sha,
+            },
+        )
+    _check_rate_limit(resp)
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def update_file_on_branch(
+    token: str,
+    repo_full_name: str,
+    file_path: str,
+    *,
+    branch: str,
+    message: str,
+    content: str,
+    sha: str,
+) -> dict[str, Any]:
+    url = f"{GITHUB_API}/repos/{repo_full_name}/contents/{quote(file_path, safe='/')}"
+    encoded_content = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client:
+        resp = await client.put(
+            url,
+            headers=_headers(token),
+            json={
+                "message": message,
+                "content": encoded_content,
+                "branch": branch,
+                "sha": sha,
+            },
+        )
+    _check_rate_limit(resp)
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def create_pull_request(
+    token: str,
+    repo_full_name: str,
+    *,
+    title: str,
+    head: str,
+    base: str,
+    body: str,
+) -> dict[str, Any]:
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls"
+    async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client:
+        resp = await client.post(
+            url,
+            headers=_headers(token),
+            json={
+                "title": title,
+                "head": head,
+                "base": base,
+                "body": body,
+            },
+        )
+    _check_rate_limit(resp)
+    resp.raise_for_status()
+    return resp.json()
 
 
 # ---------------------------------------------------------------------------

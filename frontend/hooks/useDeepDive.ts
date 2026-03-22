@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { DeepDiveResult } from "@/types/api";
+import type {
+  ApplyFixSuggestionRequest,
+  ApplyFixSuggestionResponse,
+  DeepDiveResult,
+  FixSuggestion,
+} from "@/types/api";
 import { toastDeepDiveTriggered, toastError } from "@/lib/toast";
 
 export function useDeepDiveResults(incidentId: string | undefined) {
@@ -48,6 +53,45 @@ export function useTriggerDeepDive() {
     },
     onError: () => {
       toastError("Failed to trigger deep dive");
+    },
+  });
+}
+
+export function useGenerateFixSuggestion(
+  incidentId: string | undefined,
+  resultId: string | undefined,
+) {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<FixSuggestion>(
+        `/api/incidents/${incidentId}/deep-dive/${resultId}/suggest-fix`,
+      );
+      return data;
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error ? error.message : "Failed to generate a fix suggestion";
+      toastError(message);
+    },
+  });
+}
+
+export function useApplyFixSuggestion(
+  incidentId: string | undefined,
+  resultId: string | undefined,
+) {
+  return useMutation({
+    mutationFn: async (payload: ApplyFixSuggestionRequest) => {
+      const { data } = await api.post<ApplyFixSuggestionResponse>(
+        `/api/incidents/${incidentId}/deep-dive/${resultId}/apply-fix`,
+        payload,
+      );
+      return data;
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error ? error.message : "Failed to apply the fix suggestion";
+      toastError(message);
     },
   });
 }

@@ -57,6 +57,40 @@ export type DeepDiveResult = {
   created_at: string;
 };
 
+export type FixSuggestion = {
+  incident_id: string;
+  result_id: string;
+  repo_full_name: string;
+  file_path: string;
+  line_start: number;
+  line_end: number;
+  summary: string;
+  rationale: string;
+  risk_notes: string;
+  replacement_code: string;
+  original_code: string;
+  updated_code: string;
+  diff: string;
+  file_sha: string;
+  base_branch: string;
+};
+
+export type ApplyFixSuggestionRequest = {
+  replacement_code: string;
+  summary: string;
+  rationale: string;
+  risk_notes: string;
+  file_sha: string;
+  open_pr?: boolean;
+};
+
+export type ApplyFixSuggestionResponse = {
+  branch_name: string;
+  commit_sha: string | null;
+  pull_request_url: string | null;
+  pull_request_number: number | null;
+};
+
 export type IntegrationStatus = {
   has_github: boolean;
   has_jira: boolean;

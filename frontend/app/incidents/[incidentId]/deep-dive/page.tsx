@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { CodePanel } from "@/components/deep_dive/CodePanel";
 import { CodeSnippet } from "@/components/deep_dive/CodeSnippet";
 import { EvidenceCard } from "@/components/deep_dive/EvidenceCard";
+import { FixSuggestionCard } from "@/components/deep_dive/FixSuggestionCard";
+import { FixReviewWorkspace } from "@/components/deep_dive/FixReviewWorkspace";
 import { SuspectFileList } from "@/components/deep_dive/SuspectFileList";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -12,7 +13,6 @@ import { PanelErrorBoundary } from "@/components/shared/PanelErrorBoundary";
 import { OnboardingGate } from "@/components/shared/OnboardingGate";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useDeepDiveFileContent,
@@ -26,6 +26,7 @@ export default function DeepDivePage() {
   const incidentId = params.incidentId;
 
   const [selectedResultId, setSelectedResultId] = useState<string | undefined>();
+  const [isReviewMode, setIsReviewMode] = useState(false);
   const resultsQuery = useDeepDiveResults(incidentId);
   const triggerMutation = useTriggerDeepDive();
   const defaults = useWorkspaceDefaults();
@@ -57,43 +58,45 @@ export default function DeepDivePage() {
               </Button>
             </div>
 
-            <div className="hidden gap-4 lg:grid lg:grid-cols-[1fr_1.2fr]">
-              <div className="space-y-3">
-                <SuspectFileList
-                  results={results}
-                  selectedResultId={effectiveSelectedResultId}
-                  onSelectResult={setSelectedResultId}
-                  isLoading={resultsQuery.isLoading}
-                />
-              </div>
+            <div
+              className={`hidden gap-4 lg:grid ${
+                isReviewMode ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]"
+              }`}
+            >
+              {!isReviewMode ? (
+                <div className="space-y-3">
+                  <SuspectFileList
+                    results={results}
+                    selectedResultId={effectiveSelectedResultId}
+                    onSelectResult={setSelectedResultId}
+                    isLoading={resultsQuery.isLoading}
+                  />
+                </div>
+              ) : null}
 
               <PanelErrorBoundary panelName="Code panel">
-                <Card className="overflow-hidden">
-                  <CardHeader>
-                    <CardTitle>Code Panel</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-[400px] md:h-[560px] lg:h-[calc(100vh-300px)]">
-                    <CodePanel
-                      filePath={selectedResult?.suspect_file}
-                      fileContent={fileQuery.data}
-                      lineStart={selectedResult?.suspect_lines_start}
-                      lineEnd={selectedResult?.suspect_lines_end}
-                      isLoading={fileQuery.isLoading}
-                    />
-                  </CardContent>
-                </Card>
-              </PanelErrorBoundary>
-            </div>
-
-            <div className="mt-4 hidden lg:block">
-              <PanelErrorBoundary panelName="Evidence panel">
-                <EvidenceCard
-                  result={selectedResult ?? undefined}
-                  defaultRepo={defaults.data?.default_repo}
-                  isLoading={resultsQuery.isLoading}
+                <FixReviewWorkspace
+                  key={selectedResult?.id ?? "empty-desktop"}
+                  incidentId={incidentId}
+                  result={selectedResult}
+                  fileContent={fileQuery.data}
+                  isLoading={fileQuery.isLoading}
+                  onReviewModeChange={setIsReviewMode}
                 />
               </PanelErrorBoundary>
             </div>
+
+            {!isReviewMode ? (
+              <div className="mt-4 hidden lg:block">
+                <PanelErrorBoundary panelName="Evidence panel">
+                  <EvidenceCard
+                    result={selectedResult ?? undefined}
+                    defaultRepo={defaults.data?.default_repo}
+                    isLoading={resultsQuery.isLoading}
+                  />
+                </PanelErrorBoundary>
+              </div>
+            ) : null}
 
             <div className="lg:hidden">
               <Tabs defaultValue="suspects">
@@ -101,6 +104,7 @@ export default function DeepDivePage() {
                   <TabsTrigger value="suspects">Suspects</TabsTrigger>
                   <TabsTrigger value="code">Code</TabsTrigger>
                   <TabsTrigger value="evidence">Evidence</TabsTrigger>
+                  <TabsTrigger value="fix">Fix</TabsTrigger>
                 </TabsList>
                 <TabsContent value="suspects">
                   <PanelErrorBoundary panelName="Suspect file list">
@@ -126,6 +130,16 @@ export default function DeepDivePage() {
                     <EvidenceCard
                       result={selectedResult ?? undefined}
                       defaultRepo={defaults.data?.default_repo}
+                      isLoading={resultsQuery.isLoading}
+                    />
+                  </PanelErrorBoundary>
+                </TabsContent>
+                <TabsContent value="fix">
+                  <PanelErrorBoundary panelName="Fix suggestion panel">
+                    <FixSuggestionCard
+                      key={selectedResult?.id ?? "empty-mobile"}
+                      incidentId={incidentId}
+                      result={selectedResult}
                       isLoading={resultsQuery.isLoading}
                     />
                   </PanelErrorBoundary>

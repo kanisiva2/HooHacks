@@ -239,3 +239,59 @@ async def generate_spoken_answer(
     except Exception:
         logger.exception("generate_spoken_answer failed")
         return "I'm having trouble generating an answer right now."
+
+
+async def generate_fix_suggestion(
+    *,
+    file_path: str,
+    file_content: str,
+    line_start: int,
+    line_end: int,
+    incident_summary: str,
+    evidence_reasoning: str,
+) -> dict | None:
+    """Generate a localized code fix suggestion for the suspect line range.
+
+    Returns a dict with:
+      - summary
+      - rationale
+      - risk_notes
+      - replacement_code
+    """
+    lines = file_content.splitlines()
+    if line_start < 1 or line_end < line_start or line_end > len(lines):
+        return None
+
+    highlighted = "\n".join(lines[line_start - 1:line_end])
+    start_context = max(0, line_start - 8)
+    end_context = min(len(lines), line_end + 8)
+    contextual_block = "\n".join(
+        f"{idx + 1}: {line}"
+        for idx, line in enumerate(lines[start_context:end_context], start=start_context)
+    )
+
+    system = (
+        "You are a senior software engineer helping with a production incident. "
+        "Given a suspicious file, an exact line range, and incident evidence, propose a safe, "
+        "minimal replacement for only that highlighted line range. Return ONLY JSON with keys: "
+        '"summary" (string), "rationale" (string), "risk_notes" (string), '
+        '"replacement_code" (string). Do not include markdown fences. '
+        "The replacement_code must be valid source code for the exact highlighted range only."
+    )
+    user = (
+        f"File path: {file_path}\n"
+        f"Highlighted range: lines {line_start}-{line_end}\n\n"
+        f"Incident summary:\n{incident_summary}\n\n"
+        f"Evidence reasoning:\n{evidence_reasoning}\n\n"
+        f"Contextual file excerpt:\n{contextual_block}\n\n"
+        f"Exact highlighted code to replace:\n{highlighted}"
+    )
+    try:
+        raw = await _call_llm(system, user, max_tokens=2048)
+        result = _parse_json_response(raw)
+        if isinstance(result, dict) and isinstance(result.get("replacement_code"), str):
+            return result
+        return None
+    except Exception:
+        logger.exception("generate_fix_suggestion failed")
+        return None
