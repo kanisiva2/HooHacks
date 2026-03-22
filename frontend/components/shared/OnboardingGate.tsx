@@ -38,8 +38,21 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
 
   if (workspaces.isLoading || integrations.isLoading) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center p-6">
+      <div className="flex min-h-screen items-center justify-center p-6">
         <p className="text-sm text-muted-foreground">Checking onboarding status...</p>
+      </div>
+    );
+  }
+
+  const hasWorkspace = (workspaces.data?.length ?? 0) > 0;
+  const hasGithub = integrations.data?.has_github ?? false;
+  const hasJira = integrations.data?.has_jira ?? false;
+  const isIncomplete = pathname !== "/onboarding" && (!hasWorkspace || !hasGithub || !hasJira);
+
+  if (isIncomplete) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-sm text-muted-foreground">Redirecting to onboarding...</p>
       </div>
     );
   }

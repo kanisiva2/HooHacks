@@ -17,6 +17,32 @@ const authSchema = z.object({
 
 type AuthForm = z.infer<typeof authSchema>;
 
+async function resolvePostAuthRoute(accessToken: string): Promise<"/dashboard" | "/onboarding"> {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  const [workspaceResponse, integrationResponse] = await Promise.all([
+    fetch(`${apiBase}/api/workspaces`, { headers, cache: "no-store" }),
+    fetch(`${apiBase}/api/integrations/status`, { headers, cache: "no-store" }),
+  ]);
+
+  if (!workspaceResponse.ok || !integrationResponse.ok) {
+    return "/onboarding";
+  }
+
+  const workspaces = (await workspaceResponse.json()) as Array<{ id: string }>;
+  const integrations = (await integrationResponse.json()) as {
+    has_github: boolean;
+    has_jira: boolean;
+  };
+
+  return workspaces.length > 0 && integrations.has_github && integrations.has_jira
+    ? "/dashboard"
+    : "/onboarding";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const supabase = useSupabase();
@@ -40,7 +66,8 @@ export default function LoginPage() {
       } = await supabase.auth.getSession();
 
       if (isMounted && session) {
-        router.replace("/dashboard");
+        const destination = await resolvePostAuthRoute(session.access_token);
+        router.replace(destination);
       }
     };
 
@@ -67,7 +94,13 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/dashboard");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    router.replace(
+      session ? await resolvePostAuthRoute(session.access_token) : "/onboarding",
+    );
   };
 
   const handleSignUp = async (values: AuthForm) => {

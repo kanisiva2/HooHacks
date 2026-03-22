@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Link2, Unplug } from "lucide-react";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { OnboardingGate } from "@/components/shared/OnboardingGate";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,44 +93,46 @@ function IntegrationsPageContent() {
 
   return (
     <ProtectedPage>
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <main className="w-full p-6 pb-20 md:pb-6">
-          <h1 className="mb-6 text-2xl font-semibold">Integrations</h1>
+      <OnboardingGate>
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <main className="w-full p-6 pb-20 md:pb-6">
+            <h1 className="mb-6 text-2xl font-semibold">Integrations</h1>
 
-          {successLabel ? (
-            <div className="mb-4 inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              <CheckCircle2 className="h-4 w-4" />
-              {successLabel}
-            </div>
-          ) : null}
+            {successLabel ? (
+              <div className="mb-4 inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" />
+                {successLabel}
+              </div>
+            ) : null}
 
-          {statusQuery.isLoading ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="h-36 animate-pulse rounded-xl bg-muted" />
-              <div className="h-36 animate-pulse rounded-xl bg-muted" />
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <IntegrationCard
-                provider="GitHub"
-                connected={statusQuery.data?.has_github ?? false}
-                connectPath={githubPath}
-                onDisconnect={() => disconnectMutation.mutate("github")}
-                disconnecting={disconnectMutation.isPending}
-              />
-              <IntegrationCard
-                provider="Jira"
-                connected={statusQuery.data?.has_jira ?? false}
-                connectPath={jiraPath}
-                onDisconnect={() => disconnectMutation.mutate("jira")}
-                disconnecting={disconnectMutation.isPending}
-              />
-            </div>
-          )}
-        </main>
-        <MobileNav />
-      </div>
+            {statusQuery.isLoading ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="h-36 animate-pulse rounded-xl bg-muted" />
+                <div className="h-36 animate-pulse rounded-xl bg-muted" />
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <IntegrationCard
+                  provider="GitHub"
+                  connected={statusQuery.data?.has_github ?? false}
+                  connectPath={githubPath}
+                  onDisconnect={() => disconnectMutation.mutate("github")}
+                  disconnecting={disconnectMutation.isPending}
+                />
+                <IntegrationCard
+                  provider="Jira"
+                  connected={statusQuery.data?.has_jira ?? false}
+                  connectPath={jiraPath}
+                  onDisconnect={() => disconnectMutation.mutate("jira")}
+                  disconnecting={disconnectMutation.isPending}
+                />
+              </div>
+            )}
+          </main>
+          <MobileNav />
+        </div>
+      </OnboardingGate>
     </ProtectedPage>
   );
 }
@@ -139,17 +142,19 @@ export default function IntegrationsPage() {
     <Suspense
       fallback={
         <ProtectedPage>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="w-full p-6 pb-20 md:pb-6">
-              <h1 className="mb-6 text-2xl font-semibold">Integrations</h1>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="h-36 animate-pulse rounded-xl bg-muted" />
-                <div className="h-36 animate-pulse rounded-xl bg-muted" />
-              </div>
-            </main>
-            <MobileNav />
-          </div>
+          <OnboardingGate>
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="w-full p-6 pb-20 md:pb-6">
+                <h1 className="mb-6 text-2xl font-semibold">Integrations</h1>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="h-36 animate-pulse rounded-xl bg-muted" />
+                  <div className="h-36 animate-pulse rounded-xl bg-muted" />
+                </div>
+              </main>
+              <MobileNav />
+            </div>
+          </OnboardingGate>
         </ProtectedPage>
       }
     >

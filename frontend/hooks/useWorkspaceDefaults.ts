@@ -1,5 +1,6 @@
 "use client";
 
+import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -14,12 +15,24 @@ type WorkspaceDefaultsPayload = {
   default_jira_project_key?: string;
 };
 
-export function useWorkspaceDefaults() {
+export function useWorkspaceDefaults(enabled = true) {
   return useQuery({
     queryKey: ["workspace-defaults"],
+    enabled,
     queryFn: async () => {
-      const { data } = await api.get<WorkspaceDefaults>("/api/integrations/defaults");
-      return data;
+      try {
+        const { data } = await api.get<WorkspaceDefaults>("/api/integrations/defaults");
+        return data;
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          return {
+            default_repo: null,
+            default_jira_project_key: null,
+            jira_site_url: null,
+          };
+        }
+        throw error;
+      }
     },
   });
 }

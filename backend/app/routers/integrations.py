@@ -166,13 +166,15 @@ async def _get_integration(
 @router.get("/github/connect")
 async def github_connect(
     workspace_id: str = Query(...),
+    next: str = Query("/integrations"),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the GitHub OAuth authorization URL (frontend navigates to it)."""
     await _assert_workspace_member(db, uuid.UUID(workspace_id), user_id)
 
-    state = f"{workspace_id}:{user_id}"
+    next_path = next if next.startswith("/") else "/integrations"
+    state = f"{workspace_id}:{user_id}:{next_path}"
     params = urlencode(
         {
             "client_id": settings.github_client_id,
@@ -202,10 +204,11 @@ async def github_callback(
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code or state")
 
-    parts = state.split(":", 1)
-    if len(parts) != 2:
+    parts = state.split(":", 2)
+    if len(parts) < 2:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
-    workspace_id_str, _user_id = parts
+    workspace_id_str, _user_id = parts[:2]
+    next_path = parts[2] if len(parts) == 3 and parts[2].startswith("/") else "/integrations"
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
@@ -236,7 +239,7 @@ async def github_callback(
     )
 
     return RedirectResponse(
-        url=f"{settings.frontend_url}/integrations?github=connected",
+        url=f"{settings.frontend_url}{next_path}?github=connected",
         status_code=302,
     )
 
@@ -248,13 +251,15 @@ async def github_callback(
 @router.get("/jira/connect")
 async def jira_connect(
     workspace_id: str = Query(...),
+    next: str = Query("/integrations"),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the Jira OAuth authorization URL (frontend navigates to it)."""
     await _assert_workspace_member(db, uuid.UUID(workspace_id), user_id)
 
-    state = f"{workspace_id}:{user_id}"
+    next_path = next if next.startswith("/") else "/integrations"
+    state = f"{workspace_id}:{user_id}:{next_path}"
     params = urlencode(
         {
             "audience": "api.atlassian.com",
@@ -287,10 +292,11 @@ async def jira_callback(
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code or state")
 
-    parts = state.split(":", 1)
-    if len(parts) != 2:
+    parts = state.split(":", 2)
+    if len(parts) < 2:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
-    workspace_id_str, _user_id = parts
+    workspace_id_str, _user_id = parts[:2]
+    next_path = parts[2] if len(parts) == 3 and parts[2].startswith("/") else "/integrations"
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_resp = await client.post(
@@ -343,7 +349,7 @@ async def jira_callback(
     )
 
     return RedirectResponse(
-        url=f"{settings.frontend_url}/integrations?jira=connected",
+        url=f"{settings.frontend_url}{next_path}?jira=connected",
         status_code=302,
     )
 

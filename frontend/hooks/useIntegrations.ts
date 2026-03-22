@@ -1,5 +1,6 @@
 "use client";
 
+import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { GithubRepo, IntegrationStatus, JiraProject } from "@/types/api";
@@ -8,8 +9,18 @@ export function useIntegrationStatus() {
   return useQuery({
     queryKey: ["integration-status"],
     queryFn: async () => {
-      const { data } = await api.get<IntegrationStatus>("/api/integrations/status");
-      return data;
+      try {
+        const { data } = await api.get<IntegrationStatus>("/api/integrations/status");
+        return data;
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          return {
+            has_github: false,
+            has_jira: false,
+          };
+        }
+        throw error;
+      }
     },
   });
 }
