@@ -1,15 +1,18 @@
 import uuid
-from datetime import datetime
-from typing import Literal
+from datetime import datetime, timezone
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db, get_current_user_id
+from app.models.action_item import ActionItem
 from app.models.incident import Incident
+from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
+from app.services.s3 import get_presigned_url
 
 router = APIRouter()
 
@@ -148,7 +151,79 @@ async def update_incident(
     if body.status is not None:
         incident.status = body.status
         if body.status in ("resolved", "closed") and incident.resolved_at is None:
-            incident.resolved_at = datetime.utcnow()
+            incident.resolved_at = datetime.now(timezone.utc)
+        if body.status == "closed":
+            # Cascade-close all open action items for this incident
+            await db.execute(
+                update(ActionItem)
+                .where(
+                    ActionItem.incident_id == incident_id,
+                    ActionItem.status != "closed",
+                )
+                .values(status="closed")
+            )
 
     await db.commit()
     return IncidentResponse.model_validate(incident)
+
+
+@router.get("/incidents/{incident_id}/transcript")
+async def get_transcript(
+    incident_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Return all transcript chunks for an incident ordered by start_ts."""
+    incident = await _get_incident_or_404(db, incident_id)
+    await _assert_workspace_member(db, incident.workspace_id, user_id)
+
+    result = await db.execute(
+        select(TranscriptChunk)
+        .where(TranscriptChunk.incident_id == incident_id)
+        .order_by(TranscriptChunk.start_ts.asc().nulls_last())
+    )
+    chunks = result.scalars().all()
+    return [
+        {
+            "id": str(c.id),
+            "speaker": c.speaker,
+            "text": c.text,
+            "start_ts": c.start_ts,
+            "end_ts": c.end_ts,
+            "is_final": c.is_final,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in chunks
+    ]
+
+
+@router.get("/incidents/{incident_id}/artifacts")
+async def get_artifacts(
+    incident_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Return pre-signed S3 URLs for any artifacts attached to the incident.
+    Keys are None when the artifact hasn't been uploaded yet.
+    """
+    incident = await _get_incident_or_404(db, incident_id)
+    await _assert_workspace_member(db, incident.workspace_id, user_id)
+
+    async def _safe_presigned(key: str | None) -> str | None:
+        if not key:
+            return None
+        try:
+            return await get_presigned_url(key)
+        except Exception:
+            return None
+
+    audio_url = await _safe_presigned(incident.audio_s3_key)
+    transcript_url = await _safe_presigned(incident.transcript_s3_key)
+    report_url = await _safe_presigned(incident.report_s3_key)
+
+    return {
+        "audio_url": audio_url,
+        "transcript_url": transcript_url,
+        "report_url": report_url,
+    }
