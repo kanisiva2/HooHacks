@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from typing import Any
 
@@ -15,6 +16,8 @@ from app.models.workspace import WorkspaceMember
 from app.services.event_logger import log_event
 from app.schemas.deep_dive import DeepDiveResultOut
 from app.services.github import get_file_content, get_valid_github_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -125,6 +128,8 @@ async def trigger_deep_dive(
     # Launch E4's deep dive agent as a background task (lazy import — safe if not yet merged)
     # NOTE: db is NOT passed — the request session closes when this endpoint returns.
     # E4's run_deep_dive must create its own session internally.
+    logger.info("deep_dive_triggered incident_id=%s repo=%s user_id=%s", incident_id, repo, user_id)
+
     try:
         from app.services.deep_dive_agent import run_deep_dive
         asyncio.create_task(
@@ -135,8 +140,8 @@ async def trigger_deep_dive(
                 transcript_summary=transcript_summary,
             )
         )
-    except ImportError:
-        pass  # E4's deep_dive_agent not yet available — endpoint still returns 202
+    except ModuleNotFoundError:
+        logger.warning("deep_dive_agent not available — returning 202 without agent")
 
     return {"message": "Deep dive triggered", "incident_id": str(incident_id)}
 
@@ -172,6 +177,10 @@ async def get_deep_dive_file(
         )
 
     content = await get_file_content(github_token, repo, dd_result.suspect_file)
+    logger.info(
+        "deep_dive_file_fetched incident_id=%s file=%s result_id=%s",
+        incident_id, dd_result.suspect_file, result_id,
+    )
 
     return {
         "file_path": dd_result.suspect_file,

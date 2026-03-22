@@ -30,7 +30,7 @@ class ConnectionManager:
         try:
             await websocket.send_text(json.dumps(message))
         except Exception:
-            logger.exception("Failed sending WS message; disconnecting incident", extra={"incident_id": incident_id})
+            logger.exception("ws_send_failed incident_id=%s", incident_id)
             self.disconnect(incident_id)
 
 

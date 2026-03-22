@@ -7,6 +7,7 @@ All calls are async. JSON responses are sanitized (markdown fences stripped).
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from app.config import settings
@@ -22,41 +23,62 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL)
 
 async def _call_llm(system: str, user: str, max_tokens: int = 1024) -> str:
     """Route a single prompt to the configured LLM provider and return raw text."""
-    if settings.llm_provider == "gemini":
-        from google import genai
+    provider = settings.llm_provider
+    tokens_info: str | None = None
+    _t0 = time.perf_counter()
 
-        client = genai.Client(api_key=settings.gemini_api_key)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"{system}\n\n{user}",
-            config=genai.types.GenerateContentConfig(max_output_tokens=max_tokens),
-        )
-        return response.text or ""
+    try:
+        if provider == "gemini":
+            from google import genai
 
-    if settings.llm_provider == "anthropic":
-        import anthropic
+            client = genai.Client(api_key=settings.gemini_api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=f"{system}\n\n{user}",
+                config=genai.types.GenerateContentConfig(max_output_tokens=max_tokens),
+            )
+            usage = getattr(response, "usage_metadata", None)
+            if usage:
+                tokens_info = f"in={getattr(usage, 'prompt_token_count', '?')} out={getattr(usage, 'candidates_token_count', '?')}"
+            return response.text or ""
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        message = await client.messages.create(
-            model="claude-sonnet-4-6",
+        if provider == "anthropic":
+            import anthropic
+
+            client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            message = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            usage = getattr(message, "usage", None)
+            if usage:
+                tokens_info = f"in={usage.input_tokens} out={usage.output_tokens}"
+            return message.content[0].text
+
+        import openai
+
+        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         )
-        return message.content[0].text
+        usage = getattr(response, "usage", None)
+        if usage:
+            tokens_info = f"in={usage.prompt_tokens} out={usage.completion_tokens}"
+        return response.choices[0].message.content or ""
 
-    import openai
-
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
-    return response.choices[0].message.content or ""
+    finally:
+        latency_ms = (time.perf_counter() - _t0) * 1000
+        logger.info(
+            "llm_call provider=%s latency_ms=%.0f tokens=%s",
+            provider, latency_ms, tokens_info or "unknown",
+        )
 
 
 def _parse_json_response(text: str) -> Any:

@@ -1,13 +1,18 @@
+import asyncio
+import logging
 from typing import AsyncGenerator
 
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError, ExpiredSignatureError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session_maker
+
+logger = logging.getLogger(__name__)
 
 _bearer = HTTPBearer()
 
@@ -28,9 +33,34 @@ async def _get_jwks() -> dict:
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Yields an async SQLAlchemy session for the duration of a request."""
-    async with async_session_maker() as session:
-        yield session
+    """Yields an async SQLAlchemy session. Retries connection acquisition up to 3 times on OperationalError.
+
+    Uses _session_acquired to distinguish connection errors (retryable) from
+    errors raised inside the endpoint after the session was already in use (not retried).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        _session_acquired = False
+        try:
+            async with async_session_maker() as session:
+                _session_acquired = True
+                yield session
+                return
+        except OperationalError as exc:
+            if _session_acquired:
+                # Error came from inside the endpoint — not a connection issue, don't retry
+                raise
+            last_exc = exc
+            if attempt < 3:
+                logger.warning(
+                    "db_connection_failed attempt=%d/3 error=%s — retrying", attempt, exc
+                )
+                await asyncio.sleep(0.5 * attempt)
+    logger.error("db_connection_failed after 3 attempts: %s", last_exc)
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Database temporarily unavailable",
+    )
 
 
 async def get_current_user_id(
@@ -73,11 +103,13 @@ async def get_current_user_id(
             )
         return user_id
     except ExpiredSignatureError:
+        logger.warning("auth_failed reason=token_expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
         )
-    except JWTError:
+    except JWTError as exc:
+        logger.warning("auth_failed reason=invalid_token error=%s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
