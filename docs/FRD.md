@@ -18,10 +18,10 @@ Sprynt is a cloud-backed AI incident operator that joins engineering outage call
 | Core problem | On-call incidents are operationally expensive because engineers lose time juggling the call, taking notes, assigning ownership, opening tools, searching the repo, and manually translating conversation into execution. |
 | Primary user | Software engineers, incident commanders, and technical leads handling live production incidents. |
 | Primary value | Reduce incident triage overhead and coordination latency by turning live meeting conversation into structured actions and evidence-backed technical investigation. |
-| Product form | A responsive web app with a desktop-grade dashboard and mobile-first monitoring flow, backed by a cloud orchestration layer and a browser-automation meeting bot. |
+| Product form | A responsive web app with a desktop-grade dashboard and mobile-first monitoring flow, backed by a cloud orchestration layer and a managed meeting bot service (Skribby API). |
 
 ### One-line pitch
-Sprynt is a voice-enabled AI incident operator that joins outage calls, listens in real time, answers spoken questions, investigates the codebase, updates Jira, and highlights likely root-cause files before engineers even open their laptops.
+Sprynt is a voice-enabled AI incident operator that joins outage calls via Skribby's meeting bot API, listens in real time, answers spoken questions, investigates the codebase, updates Jira, and highlights likely root-cause files before engineers even open their laptops.
 
 ---
 
@@ -92,7 +92,7 @@ The browser and phone are control-and-display surfaces. Almost all meaningful co
 Mobile / Desktop Next.js Client
       ↓ HTTPS + WebSockets
 FastAPI Orchestrator / API Layer
-      ├─ Incident Intelligence Pipeline (STT, parsing, task state)
+      ├─ Incident Intelligence Pipeline (transcript parsing, task state)
       ├─ Deep Dive Agent (repo, commits, evidence ranking)
       ├─ Voice Interaction Layer (question detection, ElevenLabs output)
       ├─ Integration Layer (GitHub, Jira, optional Slack/Notion)
@@ -100,10 +100,11 @@ FastAPI Orchestrator / API Layer
              ├─ Supabase Postgres + Auth
              └─ AWS S3
 
-Meeting Bot (Playwright)
-      ├─ joins meeting
-      ├─ captures audio
-      └─ plays bot voice back into meeting
+Skribby Meeting Bot API
+      ├─ joins meeting as "Sprynt AI" (Zoom, Google Meet, Teams)
+      ├─ captures and records audio
+      ├─ streams real-time transcripts via WebSocket (Deepgram Nova-3)
+      └─ provides recording URL after meeting ends
 ```
 
 ---
@@ -120,10 +121,10 @@ Meeting Bot (Playwright)
 | Object storage | AWS S3 | Meeting audio, transcript exports, reports, screenshots, debug artifacts |
 | Backend | FastAPI (Python) | Orchestration API, real-time pipelines, integrations, AI coordination |
 | Realtime transport | WebSockets | Stream transcript, task updates, deep dive progress, and voice status to UI |
-| Meeting bot | Playwright | Join meeting links through browser automation and serve as the visible bot |
-| Speech-to-text | Whisper or Deepgram | Convert meeting audio into text chunks for downstream reasoning |
+| Meeting bot | Skribby API | Managed meeting bot service — joins Zoom, Google Meet, and Teams via a single REST API call |
+| Speech-to-text | Deepgram Nova-3 (via Skribby real-time) | Real-time streaming transcription with speaker diarization, delivered over Skribby's WebSocket |
 | Reasoning/LLM | OpenAI or Anthropic API | Task extraction, reassignment semantics, deep dive reasoning, and spoken Q&A |
-| Voice output | ElevenLabs | Convert bot responses and proactive updates into speech played into the meeting |
+| Voice output | ElevenLabs | Convert bot responses and proactive updates into speech; playback method TBD (chat message fallback for MVP) |
 | Repo/integrations | GitHub API + Jira API | Connect source code and execution systems to the product |
 
 ---
@@ -135,7 +136,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 |---|---|
 | Supabase Auth | User sign-in, account creation, session management, and OAuth-backed identity. |
 | Supabase Postgres | Users, workspaces, integrations, incidents, action items, transcript chunk metadata, deep dive results, and event logs. |
-| AWS S3 | Raw meeting audio, transcript exports, generated reports, screenshots, and any file-sized outputs produced by the pipeline. |
+| AWS S3 | Raw meeting audio (downloaded from Skribby recording URL), transcript exports, generated reports, screenshots, and any file-sized outputs produced by the pipeline. |
 | Storage linkage | Postgres stores metadata and S3 object keys rather than duplicate file payloads. |
 
 ---
@@ -186,15 +187,15 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - **Step 1:** User clicks Start Incident from desktop or mobile.
 - **Step 2:** User enters title, severity, and meeting link or meeting credentials.
 - **Step 3:** Frontend sends incident creation request to backend and creates a live incident room.
-- **Step 4:** Meeting bot is launched and joins the meeting as Sprynt AI.
+- **Step 4:** Backend calls Skribby API to create a meeting bot that joins the meeting as Sprynt AI.
 - **Step 5:** Dashboard moves to the Incidents tab and shows live agent status.
 
 ## 13.3 Live meeting participation
-- **Step 1:** Meeting audio is captured by the bot and streamed to the backend.
-- **Step 2:** STT converts incoming audio into transcript chunks.
+- **Step 1:** Skribby meeting bot joins the call and begins recording and real-time transcription using Deepgram Nova-3.
+- **Step 2:** Backend connects to Skribby's real-time WebSocket and receives transcript chunks with speaker labels and timestamps.
 - **Step 3:** Transcript chunks are parsed into structured incident signals: affected service, assignments, reassignments, hypotheses, blockers, and user questions directed at the bot.
 - **Step 4:** UI updates in near real time with transcript, tasks, and incident state.
-- **Step 5:** If someone directly addresses the bot or a meaningful discovery occurs, the backend generates a short response and plays it into the meeting through ElevenLabs voice output.
+- **Step 5:** If someone directly addresses the bot or a meaningful discovery occurs, the backend generates a short response and sends it to the meeting chat via Skribby's chat-message action, and displays it in the dashboard.
 
 ## 13.4 Deep dive investigation
 - **Step 1:** The backend detects enough incident context to trigger a codebase deep dive.
@@ -211,7 +212,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - **Step 5:** If ownership changes verbally, Sprynt updates the same task rather than creating a second task.
 
 ## 13.6 Post-incident artifacts
-- **Step 1:** Transcript export, report summary, and any generated artifacts are saved to S3.
+- **Step 1:** Transcript export and report summary are saved to S3. Meeting audio recording is retrieved from Skribby's `recording_url` and archived to S3.
 - **Step 2:** Structured metadata and references are persisted in Postgres.
 - **Step 3:** The incident remains accessible on Dashboard and incident history views.
 
@@ -238,16 +239,19 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - The UI shall display the linked Jira issue key when available.
 
 ## Meeting bot
-- The system shall accept a meeting link or credential set and launch a Playwright-driven bot.
+- The system shall accept a meeting link and launch a Skribby meeting bot via REST API (`POST /api/v1/bot`).
 - The bot shall join the meeting under a visible agent name such as Sprynt AI.
-- The bot shall capture incoming meeting audio for STT processing.
-- The bot shall be able to play synthesized speech back into the meeting.
+- The bot shall capture meeting audio and provide a recording URL after the meeting ends.
+- The system shall connect to Skribby's real-time WebSocket to receive live transcript chunks with speaker diarization.
+- The system shall use the `deepgram-nova3-realtime` transcription model for low-latency streaming transcription.
+- Voice playback into the meeting is a stretch goal; the MVP may use Skribby's chat-message action or text-only responses in the dashboard as a fallback.
 
 ## Speech-to-text pipeline
-- The system shall transform live audio into transcript chunks suitable for real-time use.
-- Transcript latency should be low enough for the UI to feel live during the demo.
-- The transcript shall preserve chunk timing metadata and speaker label when available.
-- Transcript chunks shall be stored or exportable for later artifact generation.
+- The system shall receive real-time transcript chunks from Skribby's WebSocket using the Deepgram Nova-3 model.
+- Transcript latency should be low enough for the UI to feel live during the demo (Deepgram Nova-3 delivers sub-300ms latency).
+- The transcript shall preserve chunk timing metadata and speaker label from Deepgram's diarization.
+- Transcript chunks shall be stored and exportable for later artifact generation.
+- No separate Whisper fallback pipeline is required; Skribby handles the full STT path.
 
 ## Task extraction and reassignment engine
 - The system shall convert verbal assignments into structured action items.
@@ -268,10 +272,11 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - The panel shall update live as the deep dive progresses.
 
 ## Voice interaction with ElevenLabs
-- The bot shall be able to speak short updates into the meeting.
+- The bot shall be able to send text responses into the meeting chat via Skribby's chat-message WebSocket action.
 - Participants shall be able to ask the bot direct questions in the meeting.
-- The backend shall detect direct-address questions and produce short spoken answers.
-- The system shall avoid excessive speaking and prioritize concise, high-value updates.
+- The backend shall detect direct-address questions from transcript chunks and produce short answers.
+- For MVP, answers are displayed as text in the dashboard and sent to the meeting chat. Speaking audio into the meeting via ElevenLabs is a stretch goal dependent on Skribby supporting audio injection in the future.
+- The system shall avoid excessive chat messages and prioritize concise, high-value updates.
 
 ## Incident dashboard
 - The dashboard shall display transcript, task board, incident status, deep dive preview, and agent state in one place.
@@ -329,10 +334,10 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 
 # 18. Voice Interaction Design
 - **Inbound voice:** Participants ask questions such as "Sprynt, what have you found?"
-- **Detection:** Transcript parser identifies direct-address queries and routes them to a response generator.
+- **Detection:** Transcript parser identifies direct-address queries from Skribby's real-time transcript stream and routes them to a response generator.
 - **Response style:** One or two concise sentences maximum. High confidence, evidence-backed, no rambling.
-- **Outbound voice:** ElevenLabs synthesizes the answer, and the meeting bot plays the audio into the call.
-- **Proactive speaking:** Allowed only for meaningful updates such as likely root cause discovery or confirmed Jira sync.
+- **Outbound response:** The generated answer is sent to the meeting chat via Skribby's chat-message WebSocket action and displayed in the dashboard. ElevenLabs audio synthesis and playback into the meeting is a stretch goal.
+- **Proactive updates:** Allowed only for meaningful discoveries such as likely root cause identification or confirmed Jira sync. Sent as meeting chat messages.
 
 ---
 
@@ -353,8 +358,8 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 # 20. Backend Service Responsibilities
 - **API orchestration:** Expose endpoints for auth-aware workspace configuration, incident creation, transcript updates, integration actions, and artifact access.
 - **Realtime:** Push transcript chunks, task updates, deep dive progress, and voice status to the client through WebSockets.
-- **Bot coordination:** Launch meeting bot sessions and manage their lifecycle.
-- **AI coordination:** Route STT output into extraction, deep dive, and response-generation pipelines.
+- **Bot coordination:** Create Skribby meeting bots via REST API and manage their lifecycle through webhooks and WebSocket status events.
+- **AI coordination:** Route Skribby real-time transcript events into extraction, deep dive, and response-generation pipelines.
 - **Persistence:** Write structured data to Postgres and upload files to S3.
 
 ---
@@ -362,11 +367,11 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 # 21. Step-by-Step Internal Pipelines
 
 ## 21.1 Meeting audio to transcript
-- 1. Meeting bot joins call via Playwright.
-- 2. Bot captures system audio or meeting audio stream.
-- 3. Audio chunks are streamed to backend.
-- 4. STT engine produces transcript chunks with timestamps.
-- 5. Transcript chunks are written to UI and persisted.
+- 1. Backend sends a `POST` request to Skribby API to create a meeting bot with `deepgram-nova3-realtime` as the transcription model.
+- 2. Skribby bot joins the meeting as "Sprynt AI" and begins recording.
+- 3. Backend connects to Skribby's real-time WebSocket (`websocket_url` from the create-bot response) to receive live transcript events.
+- 4. Transcript chunks arrive with speaker labels and timestamps from Deepgram Nova-3.
+- 5. Transcript chunks are written to UI via our own WebSocket and persisted to Postgres.
 
 ## 21.2 Transcript to structured execution
 - 1. Chunk arrives at parsing layer.
@@ -386,8 +391,8 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 - 1. Participant asks, for example, "Sprynt, what files are suspicious?"
 - 2. Transcript parser labels the chunk as a direct-address question.
 - 3. Response generator uses current incident state and deep dive results.
-- 4. Text answer is synthesized with ElevenLabs.
-- 5. Meeting bot speaks the answer back into the meeting.
+- 4. Text answer is sent to the meeting chat via Skribby's chat-message WebSocket action and displayed in the dashboard.
+- 5. (Stretch) Text answer is synthesized with ElevenLabs and played as audio if audio injection becomes supported.
 
 ---
 
@@ -401,11 +406,11 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 ---
 
 # 23. Error Handling and Fallbacks
-- **Meeting join failure:** Show clear UI state, allow retry, and support backup demo mode with controlled audio input.
-- **STT degradation:** Continue UI updates with whatever transcript quality is available; retain the raw audio artifact for replay.
+- **Meeting join failure:** Show clear UI state based on Skribby bot status webhooks; allow retry by creating a new bot. Support backup demo mode with pre-recorded transcript input.
+- **STT degradation:** If Skribby's real-time WebSocket sends an error event, fall back to polling Skribby's REST API for post-meeting transcript. Retain the recording URL for replay.
 - **Integration failure:** Task remains active in Sprynt UI even if Jira sync fails; show explicit sync error state instead of dropping the task.
 - **Deep dive uncertainty:** Show confidence and evidence; do not overstate findings as guaranteed root cause.
-- **Voice failure:** Render the last spoken message in text on dashboard so the bot remains understandable.
+- **Voice failure:** Since MVP uses text chat instead of audio playback, render the bot's answer in the meeting chat via Skribby and in the dashboard transcript. If the chat-message action fails, display the response only in the dashboard.
 
 ---
 
@@ -415,8 +420,8 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 |---|---|---|
 | Auth | Supabase sign-in and workspace flow | Additional auth providers or advanced roles |
 | Integrations | GitHub + Jira | Slack and Notion |
-| Meeting bot | Join call and route audio | More meeting platforms and richer bot controls |
-| Voice | Answer direct questions and announce key findings | More natural turn-taking and richer conversations |
+| Meeting bot | Skribby API with Deepgram Nova-3 real-time transcription | Audio injection for voice playback into meeting |
+| Voice | Answer direct questions via meeting chat + dashboard text | ElevenLabs audio playback into meeting if Skribby adds support |
 | Deep Dive | Ranked suspect files and highlighted lines | Patch generation or PR drafting |
 | History | Stored incidents and artifacts | Replay, analytics, and postmortem generation |
 
@@ -425,11 +430,11 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 # 25. Implementation Order
 - **Phase 1 - Product shell:** Set up Next.js app, Supabase auth, workspace flow, dashboard skeleton, and Integrations tab.
 - **Phase 2 - Core data:** Create Postgres schema, S3 artifact wiring, and backend API contracts.
-- **Phase 3 - Meeting bot:** Implement Playwright join flow and audio capture path.
-- **Phase 4 - STT and live transcript:** Get audio-to-text working end to end with UI streaming.
+- **Phase 3 - Meeting bot:** Integrate Skribby API for bot creation, connect to Skribby real-time WebSocket for transcript streaming.
+- **Phase 4 - STT and live transcript:** Wire Skribby WebSocket transcript events through the backend to the dashboard UI.
 - **Phase 5 - Task engine and Jira sync:** Implement task extraction, stabilization, live reassignment, and Jira updates.
 - **Phase 6 - Deep Dive:** Connect GitHub, search repo, rank suspects, and display code highlight panel.
-- **Phase 7 - Voice interaction:** Support direct spoken Q&A and proactive updates through ElevenLabs.
+- **Phase 7 - Voice interaction:** Support direct Q&A via meeting chat (Skribby chat-message action) and dashboard text. ElevenLabs audio synthesis is stretch.
 - **Phase 8 - Polish:** Improve mobile responsiveness, incident history, and final demo choreography.
 
 ---
@@ -440,19 +445,19 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 |---|---|---|
 | Engineer 1 | Next.js frontend, dashboard, mobile responsiveness, Monaco code panel | Integrations UI and onboarding polish |
 | Engineer 2 | FastAPI backend, WebSockets, data model, Supabase/S3 wiring | Incident APIs and persistence |
-| Engineer 3 | Meeting bot, audio routing, STT pipeline, ElevenLabs speech loop | Bot lifecycle and demo reliability |
+| Engineer 3 | Skribby integration, real-time WebSocket listener, transcript parsing, task machine, deep dive agent | Voice Q&A via chat, bot lifecycle management |
 | Engineer 4 | GitHub deep dive, task extraction, Jira sync, evidence ranking | Parser quality and incident intelligence |
 
 ---
 
 # 27. Demo Script Requirements
 - 1. User launches incident from the app and enters a meeting link.
-- 2. Sprynt AI joins the meeting.
+- 2. Sprynt AI joins the meeting via Skribby.
 - 3. Participants verbally describe the outage and assign work.
-- 4. Transcript appears live; tasks appear and then sync to Jira.
+- 4. Transcript appears live (streamed from Skribby's Deepgram Nova-3 WebSocket); tasks appear and then sync to Jira.
 - 5. Ownership changes verbally; UI and Jira update accordingly.
 - 6. A participant asks Sprynt what it has found.
-- 7. Sprynt answers aloud and highlights the suspect file/lines on the dashboard.
+- 7. Sprynt responds in the meeting chat and highlights the suspect file/lines on the dashboard.
 - 8. Dashboard shows the linked GitHub evidence and current incident state.
 
 ---
@@ -469,4 +474,4 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 
 | Build-ready summary |
 |---|
-| Sprynt is a responsive web application backed by FastAPI, Supabase Auth/Postgres, and AWS S3. A Playwright bot joins an incident meeting, streams audio to the backend, and uses STT plus LLM reasoning to transcribe discussion, extract and reassign tasks, update Jira, investigate the connected GitHub repo, and answer spoken questions through ElevenLabs. The desktop dashboard exposes the full incident room and deep dive workspace, while mobile provides launch and monitoring capabilities. |
+| Sprynt is a responsive web application backed by FastAPI, Supabase Auth/Postgres, and AWS S3. A Skribby-managed meeting bot joins an incident call and streams real-time transcripts (via Deepgram Nova-3) to the backend over WebSocket. The backend uses LLM reasoning to parse discussion, extract and reassign tasks, update Jira, investigate the connected GitHub repo, and answer questions via meeting chat. The desktop dashboard exposes the full incident room and deep dive workspace, while mobile provides launch and monitoring capabilities. |

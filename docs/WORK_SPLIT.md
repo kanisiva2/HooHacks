@@ -13,7 +13,7 @@
 | **Path A** | E1 | Backend Core — FastAPI, DB, Auth, Config | `app/main.py`, `app/config.py`, `app/database.py`, `app/deps.py`, `app/models/*`, `app/routers/workspaces.py`, `app/routers/incidents.py`, `alembic/*` |
 | **Path B** | E2 | Frontend — Next.js, UI, State, WebSocket | `frontend/app/*`, `frontend/components/*`, `frontend/hooks/*`, `frontend/stores/*`, `frontend/lib/*`, `frontend/types/*` |
 | **Path C** | E3 | Integrations & Services — GitHub, Jira, S3, LLM | `app/services/github.py`, `app/services/jira.py`, `app/services/s3.py`, `app/services/llm.py`, `app/routers/integrations.py`, `app/routers/tasks.py`, `app/routers/deep_dive.py` |
-| **Path D** | E4 | Real-Time Pipeline — Bot, STT, Voice, WebSocket, Task Machine, Deep Dive | `bot_worker/*`, `app/services/stt.py`, `app/services/voice.py`, `app/services/task_machine.py`, `app/services/deep_dive_agent.py`, `app/services/transcript_parser.py`, `app/ws_manager.py`, `app/routers/ws.py` |
+| **Path D** | E4 | Real-Time Pipeline — Skribby Integration, Transcript Processing, Voice, WebSocket, Task Machine, Deep Dive | `app/services/skribby.py`, `app/services/voice.py`, `app/services/task_machine.py`, `app/services/deep_dive_agent.py`, `app/services/transcript_parser.py`, `app/ws_manager.py`, `app/routers/ws.py` |
 
 ---
 
@@ -212,9 +212,9 @@ Create `app/routers/integrations.py` with the full OAuth connect and callback fl
 
 ---
 
-### E4 — Real-Time Infrastructure (WebSocket, Bot Skeleton, STT Skeleton)
+### E4 — Real-Time Infrastructure (WebSocket, Skribby Service, Transcript Parser)
 
-**Deliverables:** WebSocket manager, WS endpoint, bot worker skeleton, STT service stub.
+**Deliverables:** WebSocket manager, WS endpoint, Skribby API service, transcript parser skeleton.
 
 **Step 1 — WebSocket connection manager** (ref: Technical Spec §13.1)
 
@@ -226,32 +226,35 @@ Create `app/ws_manager.py` exactly as specified in §13.1. The `ConnectionManage
 
 Export a module-level `manager = ConnectionManager()` singleton.
 
-**Step 2 — WebSocket endpoints** (ref: Technical Spec §13.2, §13.3)
+**Step 2 — WebSocket endpoint** (ref: Technical Spec §13.2)
 
 Create `app/routers/ws.py` with:
 - `@router.websocket("/ws/{incident_id}")` — the dashboard WebSocket. Accepts the connection, registers with the manager, and keeps alive by reading (client pings). On disconnect, removes from manager.
-- `@router.websocket("/audio/{incident_id}")` — the audio ingest WebSocket (internal only, used by the bot worker). This is a stub for now — it will accept connections but log received data without processing until E4 integrates STT in Sprint 2.
 
-**Step 3 — STT service skeleton** (ref: Technical Spec §8.1, §8.2)
+Note: The `/audio/{incident_id}` ingest endpoint from the old spec is **no longer needed**. Skribby handles audio capture and STT internally. Our backend connects to Skribby's WebSocket as a client, not as a server receiving audio.
 
-Create `app/services/stt.py` with the interface defined but functional implementation deferred:
-- `stream_to_deepgram(audio_queue, incident_id, on_transcript_chunk)` — implement the Deepgram streaming client as specified in §8.1. Use `DeepgramClient`, `LiveOptions` with `model="nova-2"`, `diarize=True`, `interim_results=True`, `punctuate=True`, `smart_format=True`.
-- `transcribe_with_whisper(audio_file_path)` — implement the Whisper fallback as specified in §8.2.
+**Step 3 — Skribby API service**
 
-**Step 4 — Bot worker skeleton** (ref: Technical Spec §7.1, §7.2)
+Create `app/services/skribby.py` — the service that manages Skribby meeting bots:
+- `create_bot(meeting_url, bot_name, service, webhook_url)` — `POST https://platform.skribby.io/api/v1/bot` with `transcription_model: "deepgram-nova3-realtime"`, `bot_name`, `meeting_url`, `service` (auto-detect from URL: "zoom", "gmeet", or "teams"), and optional `webhook_url` for status updates. Returns the bot `id`, `websocket_url`, and `websocket_read_only_url`.
+- `stop_bot(bot_id)` — `POST https://platform.skribby.io/api/v1/bot/{id}/stop`. Gracefully stops the bot.
+- `get_bot(bot_id)` — `GET https://platform.skribby.io/api/v1/bot/{id}`. Returns bot status, recording URL, transcript data.
+- `detect_service(meeting_url)` — helper that inspects the URL to determine `"zoom"`, `"gmeet"`, or `"teams"`.
 
-Create the bot worker files:
-- `bot_worker/__init__.py`
-- `bot_worker/runner.py` — as specified in §7.1. Implement `run_bot(meeting_url, incident_id, backend_ws_url)`:
-  - Launches Chromium with Playwright using the specified args (`--use-fake-ui-for-media-stream`, `--no-sandbox`, etc.).
-  - Navigates to the meeting URL.
-  - Calls `_join_as_bot(page)` — platform-specific join logic (Zoom web client example in spec).
-  - Creates an asyncio task for `start_audio_capture`.
-  - Keeps alive until stopped.
-- `bot_worker/audio_capture.py` — as specified in §7.2. Injects Web Audio API script into the page, polls for audio chunks, and forwards them via WebSocket to `/audio/{incident_id}`.
-- `bot_worker/audio_injector.py` — stub for now. Will be implemented in Sprint 3 with voice.
+All calls use `httpx.AsyncClient` with `Authorization: Bearer {SKRIBBY_API_KEY}` header.
 
-**Step 5 — Transcript parser skeleton** (ref: Technical Spec §11.2)
+**Step 4 — Skribby real-time WebSocket listener**
+
+Create `app/services/skribby_listener.py` — connects to Skribby's `websocket_url` and forwards transcript events to the backend pipeline:
+- `listen_to_skribby(websocket_url, incident_id, db)` — connects to Skribby's WebSocket using the `websockets` library. Parses incoming JSON messages and handles event types:
+  - `"start"` — bot has joined and started recording. Broadcast agent status `"listening"`.
+  - `"transcript"` — a transcript chunk with `speaker`, `text`, `timestamp`, `is_final`. Call `process_parsed_chunk()`.
+  - `"stop"` — recording ended. Broadcast agent status `"idle"`. Disconnect.
+  - `"error"` — transcription error. Log and broadcast agent status with error.
+  - `"ping"` — ignore (keepalive).
+- This runs as a background `asyncio.Task` created when the incident is started.
+
+**Step 5 — Transcript parser skeleton**
 
 Create `app/services/transcript_parser.py` with:
 - `WAKE_PHRASES` list.
@@ -270,7 +273,8 @@ Create `app/services/transcript_parser.py` with:
 5. `POST /api/incidents` creates a row in the `incidents` table.
 6. WebSocket at `ws://localhost:8000/ws/test-id` accepts a connection (test with a WebSocket client like `wscat`).
 7. GitHub and Jira OAuth redirect flows work (redirect to provider login pages).
-8. Merge all branches to `main`.
+8. Skribby API service can create a bot (test with a real meeting URL or verify the HTTP call structure with a mock).
+9. Merge all branches to `main`.
 
 ---
 
@@ -440,9 +444,9 @@ Create `app/settings/page.tsx`:
 
 ---
 
-### E4 — Task Machine, Deep Dive Agent, Audio Pipeline
+### E4 — Task Machine, Deep Dive Agent, Skribby Transcript Pipeline
 
-**Deliverables:** Working task state machine. Working deep dive agent. Audio ingest WebSocket processes audio through STT.
+**Deliverables:** Working task state machine. Working deep dive agent. Skribby real-time WebSocket listener processes transcript events into the pipeline.
 
 **Step 1 — Task state machine** (ref: Technical Spec §9.1, §9.2)
 
@@ -471,14 +475,15 @@ Create `app/services/deep_dive_agent.py` exactly as specified in §10.1. Pipelin
 7. Push results via WebSocket (`deep_dive_update` message).
 8. Notify UI: agent status → `"listening"`.
 
-**Step 3 — Complete audio ingest WebSocket** (ref: Technical Spec §13.3)
+**Step 3 — Complete Skribby real-time listener**
 
-Flesh out the `/audio/{incident_id}` WebSocket endpoint in `app/routers/ws.py`:
-- Accept audio chunks from the bot worker.
-- Decode base64 audio data.
-- Feed into an `asyncio.Queue`.
-- Create a background task running `stream_to_deepgram()` with the queue.
-- The `on_transcript` callback calls `process_parsed_chunk()`.
+Flesh out `app/services/skribby_listener.py`:
+- Connect to Skribby's `websocket_url` (returned when the bot was created).
+- Parse incoming JSON messages. Handle the `"transcript"` event type by extracting `speaker`, `text`, `is_final`, `start_ts`, `end_ts` fields.
+- For each transcript event, call `process_parsed_chunk()`.
+- Handle `"start"` event by broadcasting agent status `"listening"`.
+- Handle `"stop"` event by broadcasting agent status `"idle"` and fetching the final recording URL from Skribby's REST API.
+- Handle `"error"` event by logging the error and broadcasting agent status with the error message.
 
 **Step 4 — Complete transcript parser** (ref: Technical Spec §11.2)
 
@@ -501,7 +506,8 @@ Flesh out `app/services/transcript_parser.py`:
 4. Manually trigger task extraction → see a task appear in the TaskBoard as "proposed" → watch it transition to "active" after 15 seconds.
 5. GitHub and Jira OAuth flows complete end-to-end (tokens stored in DB).
 6. Manually trigger deep dive → see suspect files appear in the incident room.
-7. Merge all branches to `main`.
+7. Skribby service can create a bot and the listener receives transcript events from the WebSocket (test with a real short meeting).
+8. Merge all branches to `main`.
 
 ---
 
@@ -516,25 +522,37 @@ Flesh out `app/services/transcript_parser.py`:
 **Step 1 — Bot launch integration**
 
 Update `POST /api/incidents` in `app/routers/incidents.py`:
-- When `meeting_link` is provided, launch the bot worker as a subprocess or background task:
+- When `meeting_link` is provided, call E4's Skribby service to create a meeting bot:
   ```python
-  import asyncio
-  asyncio.create_task(run_bot(meeting_url, str(incident.id), "ws://localhost:8000"))
+  from app.services.skribby import create_bot, detect_service
+  
+  service = detect_service(meeting_link)
+  bot_result = await create_bot(
+      meeting_url=meeting_link,
+      bot_name="Sprynt AI",
+      service=service,
+  )
   ```
-- **Do NOT run Playwright inside the request handler** — it must run as a separate process or background task. For production, use `subprocess.Popen` or a task queue. For development, `asyncio.create_task` is acceptable.
-- Set `bot_session_id` on the incident to track the running bot.
+- Store `bot_result["id"]` as `bot_session_id` on the incident.
+- Store `bot_result["websocket_url"]` in the incident metadata for the Skribby listener to use.
+- Launch the Skribby WebSocket listener as a background task:
+  ```python
+  asyncio.create_task(
+      listen_to_skribby(bot_result["websocket_url"], str(incident.id), db)
+  )
+  ```
 
 **Step 2 — Incident close → stop bot**
 
 Update `PATCH /api/incidents/{id}`:
-- When status changes to `"resolved"` or `"closed"`, signal the bot to stop.
-- Send a `"stop"` message through the audio WebSocket or maintain a shared cancellation mechanism.
+- When status changes to `"resolved"` or `"closed"`, call `stop_bot(bot_session_id)` via the Skribby service.
+- The Skribby listener will receive the `"stop"` event and clean up.
 
 **Step 3 — Artifact export on incident close**
 
 When an incident is resolved:
 1. Compile all `TranscriptChunk` rows into a single text document. Upload to S3 via `upload_text(incident_transcript_key(id), full_transcript)`. Update `transcript_s3_key` on the incident.
-2. If audio was captured, upload to S3 via `upload_bytes(incident_audio_key(id), audio_data, "audio/webm")`. Update `audio_s3_key`.
+2. Fetch the recording from Skribby: call `get_bot(bot_session_id)` to get `recording_url`, download the audio file via `httpx`, and upload to S3 via `upload_bytes(incident_audio_key(id), audio_data, "audio/webm")`. Update `audio_s3_key`.
 3. Generate a markdown incident report (summary, timeline of events, tasks created, deep dive findings). Upload via `upload_text(incident_report_key(id), report_md)`. Update `report_s3_key`.
 
 **Step 4 — IncidentEvent logging**
@@ -651,29 +669,39 @@ Add comprehensive error handling to all integration services:
 
 ---
 
-### E4 — Voice Pipeline, Auto Deep Dive Trigger
+### E4 — Voice Pipeline (Chat-Based), Auto Deep Dive Trigger
 
-**Step 1 — Voice service** (ref: Technical Spec §11.1)
+**Step 1 — Voice service (chat-based response)**
 
-Create `app/services/voice.py` exactly as specified in §11.1:
-- `synthesize_speech(text)` — calls ElevenLabs API with `eleven_turbo_v2` model. Collects the async generator into bytes.
-- `speak_into_meeting(text, incident_id, bot_page)` — synthesizes speech, base64-encodes, and injects into the Playwright page via `page.evaluate()`. The JavaScript creates an `Audio` element and plays it.
+Create `app/services/voice.py`:
+- `send_chat_response(text, incident_id, skribby_websocket_url)` — connects to or reuses the Skribby WebSocket and sends a chat-message action:
+  ```python
+  import websockets, json
+  
+  async def send_chat_response(text: str, skribby_ws_url: str):
+      async with websockets.connect(skribby_ws_url) as ws:
+          await ws.send(json.dumps({
+              "action": "chat-message",
+              "data": {"content": text}
+          }))
+  ```
+- Note: ElevenLabs TTS synthesis is deferred to stretch scope. For MVP, the bot responds via meeting chat text and dashboard display.
 
-**Step 2 — Voice question handling** (ref: Technical Spec §11.2)
+**Step 2 — Voice question handling**
 
 Complete `handle_voice_question()` in `app/services/transcript_parser.py`:
 - Detects wake phrases.
 - Sets agent status to `"speaking"`.
 - Calls `generate_spoken_answer()` from E3's LLM service with full incident context.
-- Calls `speak_into_meeting()` to play the answer.
-- Broadcasts the spoken answer text via WebSocket.
+- Calls `send_chat_response()` to send the answer to the meeting chat via Skribby.
+- Broadcasts the answer text via WebSocket to the dashboard.
 - Sets agent status back to `"listening"`.
 
 **Step 3 — Wire voice into transcript parser**
 
 Update `process_parsed_chunk()`:
 - After persisting and broadcasting the chunk, check `is_direct_address(text)`.
-- If True, spawn `handle_voice_question()` as a background task. This requires passing the `bot_page` reference — store it in a module-level dict keyed by `incident_id` when the bot starts.
+- If True, spawn `handle_voice_question()` as a background task. This requires the Skribby `websocket_url` — store it in a module-level dict keyed by `incident_id` when the Skribby listener starts.
 
 **Step 4 — Auto deep dive trigger**
 
@@ -685,23 +713,17 @@ Implement automatic deep dive triggering in `process_parsed_chunk()`:
 - Build the transcript summary from the last 30 chunks.
 - Log a `"deep_dive_started"` event.
 
-**Step 5 — Audio injector**
-
-Complete `bot_worker/audio_injector.py`:
-- Implement a function that takes audio bytes and a Playwright page, and plays the audio into the meeting.
-- This is called by `speak_into_meeting()` in the voice service.
-
 ---
 
 ### Sprint 3 Sync Point
 
 **All engineers meet to verify:**
-1. Creating an incident with a meeting link launches the Playwright bot (test with a mock meeting URL or a real test meeting).
-2. Audio from the bot flows through the STT pipeline and transcript chunks appear in the UI.
-3. Tasks extracted from speech appear in the task board, transition through states, and sync to Jira with proper ADF descriptions.
-4. Addressing Sprynt by name triggers voice response (verify audio playback in meeting).
+1. Creating an incident with a meeting link creates a Skribby bot and the bot joins the meeting.
+2. Transcript chunks from Skribby's real-time WebSocket flow through the backend and appear in the TranscriptFeed UI.
+3. Tasks extracted from transcript appear in the task board, transition through states, and sync to Jira with proper ADF descriptions.
+4. Addressing Sprynt by name triggers a response in the meeting chat (via Skribby chat-message action) and in the dashboard.
 5. Deep dive triggers automatically after sufficient transcript and results display in the Monaco code panel.
-6. Resolving an incident exports artifacts to S3.
+6. Resolving an incident stops the Skribby bot, downloads the recording, and exports artifacts to S3.
 7. Mobile layout works on a phone-sized viewport.
 8. Merge all branches to `main`.
 
@@ -744,24 +766,24 @@ Complete `bot_worker/audio_injector.py`:
 
 ---
 
-### E4 — Bot Resilience, STT Reconnection, Voice Fallback
+### E4 — Skribby Listener Resilience, Voice Fallback
 
-- Handle bot disconnection from meetings — detect when the Playwright page is closed or the meeting ends. Broadcast agent status `"idle"` and log an event.
-- Add Deepgram WebSocket reconnection — if the STT connection drops, reconnect and resume streaming.
-- Add Whisper fallback — if Deepgram fails 3 consecutive times, switch to batch Whisper transcription (save audio chunks to temp files, transcribe in 30-second batches).
-- Handle ElevenLabs failures — if TTS synthesis fails, fall back to a text-only response in the WebSocket (display in UI instead of speaking).
-- Test the full audio pipeline end-to-end with a real meeting (Zoom or Google Meet).
+- Handle Skribby bot disconnection — if the Skribby WebSocket closes unexpectedly, poll the Skribby REST API for bot status. If status is `"finished"` or `"not_admitted"`, broadcast agent status `"idle"` and log an event.
+- Add Skribby WebSocket reconnection — if the WebSocket connection drops but the bot is still active (check via REST API), reconnect to the `websocket_url`.
+- Handle Skribby transcript errors — if the `"error"` event fires, log the error, broadcast agent status, and fall back to polling the Skribby REST API for post-meeting transcript when the bot finishes.
+- Handle chat-message failures — if the Skribby chat-message action fails, fall back to a text-only response displayed in the dashboard WebSocket (no meeting chat).
+- Test the full transcript pipeline end-to-end with a real meeting (Zoom, Google Meet, or Teams).
 
 ---
 
 ### Sprint 4 Sync Point
 
 **All engineers meet to verify:**
-1. Error scenarios handled gracefully (disconnect WiFi → reconnect; revoke a GitHub token → see error in UI; kill the bot process → incident room shows disconnected state).
+1. Error scenarios handled gracefully (disconnect WiFi → reconnect; revoke a GitHub token → see error in UI; Skribby bot fails to join → incident room shows error state).
 2. Loading and empty states render correctly throughout the app.
 3. Jira sync retries work when Jira API returns transient errors.
 4. WebSocket reconnects after brief network interruptions.
-5. Full end-to-end test: create incident → bot joins meeting → transcript streams → tasks extracted → deep dive runs → voice Q&A works → resolve incident → artifacts in S3.
+5. Full end-to-end test: create incident → Skribby bot joins meeting → transcript streams → tasks extracted → deep dive runs → chat Q&A works → resolve incident → recording downloaded → artifacts in S3.
 6. Merge all branches to `main`.
 
 ---
@@ -774,9 +796,8 @@ Complete `bot_worker/audio_injector.py`:
 
 ### E1 — Docker, Deployment Config
 
-- Create `Dockerfile` for the backend (Python 3.11 base, install deps, install Playwright chromium, expose port 8000).
-- Create `Dockerfile` for the bot worker (same base but entry point is `bot_worker/runner.py`).
-- Update `docker-compose.yml` with both services, environment variables from `.env`, and network configuration.
+- Create `Dockerfile` for the backend (Python 3.11 base, install deps, expose port 8000). Note: Playwright and Chromium are **no longer required** since Skribby handles the meeting bot externally.
+- Update `docker-compose.yml` with the backend service, environment variables from `.env`, and network configuration. The separate `bot_worker` container is **no longer needed**.
 - Set up CORS for production (replace `localhost:3000` with the production frontend URL).
 - Configure WebSocket URLs for production (`wss://` instead of `ws://`).
 - Document the Alembic migration workflow for production deploys.
@@ -808,8 +829,8 @@ Complete `bot_worker/audio_injector.py`:
 ### E4 — End-to-End Testing, Documentation
 
 - Write a comprehensive end-to-end test script that exercises every feature path.
-- Test with Zoom, Google Meet, and Teams web clients (document which platforms work and which have selector issues).
-- Document known limitations of the Playwright bot (selector fragility, platform-specific join flows).
+- Test with Zoom, Google Meet, and Teams meetings via Skribby (document which platforms work reliably and any Skribby-specific quirks like bot detection or authentication requirements).
+- Document the Skribby integration (API key setup, supported transcription models, webhook configuration, real-time WebSocket event format).
 - Write the project `README.md` with: architecture overview, setup instructions (link to SETUP.md), running in dev, running in production, and troubleshooting common issues.
 - Document the WebSocket message contract for future frontend/backend development.
 
@@ -818,9 +839,9 @@ Complete `bot_worker/audio_injector.py`:
 ### Sprint 5 Sync Point (Final)
 
 **All engineers meet for final verification:**
-1. `docker compose up` starts both backend and bot worker successfully.
+1. `docker compose up` starts the backend successfully (no separate bot worker container needed).
 2. Frontend production build works (`npm run build && npm start`).
-3. Full end-to-end test passes on at least one meeting platform.
+3. Full end-to-end test passes on at least one meeting platform via Skribby.
 4. All API endpoints return appropriate error codes for unauthorized access.
 5. README is complete and a new developer could set up the project from scratch following the documentation.
 6. All code is merged to `main`, tagged as `v2.0.0`.
@@ -850,13 +871,13 @@ This table shows which engineer owns each file to minimize merge conflicts. If y
 | `app/services/jira.py` | E3 | — |
 | `app/services/s3.py` | E3 | E1 |
 | `app/services/llm.py` | E3 | — |
-| `app/services/bot.py` | E4 | — |
-| `app/services/stt.py` | E4 | — |
+| `app/services/skribby.py` | E4 | — |
+| `app/services/skribby_listener.py` | E4 | — |
 | `app/services/voice.py` | E4 | — |
 | `app/services/task_machine.py` | E4 | E3 (Jira calls) |
 | `app/services/deep_dive_agent.py` | E4 | E3 (GitHub/LLM calls) |
 | `app/services/transcript_parser.py` | E4 | — |
-| `bot_worker/*` | E4 | — |
+| `docker-compose.yml` | E1 | — |
 | `alembic/*` | E1 | — |
 | `frontend/app/layout.tsx` | E2 | — |
 | `frontend/app/login/*` | E2 | — |
@@ -870,7 +891,6 @@ This table shows which engineer owns each file to minimize merge conflicts. If y
 | `frontend/stores/*` | E2 | — |
 | `frontend/lib/*` | E2 | — |
 | `frontend/types/*` | E2 | — |
-| `docker-compose.yml` | E1 | E4 |
 | `README.md` | E4 | All |
 
 ---
@@ -886,9 +906,10 @@ Understanding who depends on whom prevents blocking:
 - E4 (Task Machine) depends on E3 (LLM service) for `extract_tasks_from_chunk` and `detect_reassignment`.
 - E4 (Deep Dive) depends on E3 (GitHub service) for `get_repo_tree`, `get_file_content`, etc.
 - E1 (Deep Dive router) depends on E4 (Deep Dive agent) for `run_deep_dive`.
+- E4 (Skribby listener) is mostly independent — depends only on E4's own `process_parsed_chunk`.
 
 **Sprint 3:**
-- E1 (Bot launch) depends on E4 (Bot worker) for `run_bot`.
+- E1 (Bot launch) depends on E4 (Skribby service) for `create_bot` and `listen_to_skribby`.
 - E4 (Voice) depends on E3 (LLM) for `generate_spoken_answer`.
 - E4 (Task machine Jira sync) depends on E3 (Jira service) for `create_jira_issue`.
 - E2 (Monaco panel) is independent.

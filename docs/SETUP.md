@@ -17,13 +17,12 @@ This document walks every engineer through the full environment setup required t
 6. [AWS S3 (Artifact Storage)](#6-aws-s3-artifact-storage)
 7. [GitHub OAuth App](#7-github-oauth-app)
 8. [Jira OAuth 2.0 (3LO)](#8-jira-oauth-20-3lo)
-9. [Deepgram (Speech-to-Text)](#9-deepgram-speech-to-text)
-10. [ElevenLabs (Text-to-Speech)](#10-elevenlabs-text-to-speech)
+9. [Skribby (Meeting Bot API)](#9-skribby-meeting-bot-api)
+10. [ElevenLabs (Text-to-Speech) — Stretch](#10-elevenlabs-text-to-speech--stretch)
 11. [LLM Provider (Anthropic / OpenAI)](#11-llm-provider-anthropic--openai)
-12. [Playwright (Meeting Bot)](#12-playwright-meeting-bot)
-13. [Docker](#13-docker)
-14. [Environment Files](#14-environment-files)
-15. [Verification Checklist](#15-verification-checklist)
+12. [Docker](#12-docker)
+13. [Environment Files](#13-environment-files)
+14. [Verification Checklist](#14-verification-checklist)
 
 ---
 
@@ -34,8 +33,8 @@ Install these tools on your local machine before proceeding. All engineers need 
 ### System Requirements
 
 - **OS:** macOS 12+, Ubuntu 22.04+, or Windows 11 with WSL2
-- **RAM:** 8 GB minimum (16 GB recommended — Playwright + Next.js dev server are memory-hungry)
-- **Disk:** 5 GB free for dependencies, browser binaries, and Docker images
+- **RAM:** 8 GB minimum (16 GB recommended — Next.js dev server can be memory-hungry)
+- **Disk:** 3 GB free for dependencies and Docker images
 
 ### Core Tools
 
@@ -79,14 +78,12 @@ If the repo is freshly initialized, create the folder skeleton:
 ```bash
 # Backend
 mkdir -p backend/app/{models,schemas,routers,services}
-mkdir -p backend/bot_worker
 mkdir -p backend/alembic/versions
 touch backend/app/__init__.py
 touch backend/app/models/__init__.py
 touch backend/app/schemas/__init__.py
 touch backend/app/routers/__init__.py
 touch backend/app/services/__init__.py
-touch backend/bot_worker/__init__.py
 
 # Frontend will be scaffolded by create-next-app (see Section 5)
 ```
@@ -186,19 +183,9 @@ Create `backend/requirements.txt` with the contents from Technical Spec Section 
 pip install -r requirements.txt
 ```
 
-This installs FastAPI, SQLAlchemy (async), httpx, anthropic, openai, deepgram-sdk, elevenlabs, playwright, aioboto3, and all other dependencies.
+This installs FastAPI, SQLAlchemy (async), httpx, anthropic, openai, elevenlabs, aioboto3, websockets, and all other dependencies.
 
-### 4.3 Install Playwright Browser
-
-Playwright needs a Chromium binary to drive the meeting bot:
-
-```bash
-playwright install chromium
-```
-
-This downloads ~150 MB. The binary is stored in `~/.cache/ms-playwright/`.
-
-### 4.4 Initialize Alembic
+### 4.3 Initialize Alembic
 
 ```bash
 cd backend
@@ -210,7 +197,7 @@ Then edit `alembic/env.py` to:
 - Set `target_metadata = Base.metadata`
 - Override the database URL to use the **direct connection** (port 5432), NOT the pooler URL
 
-### 4.5 Run the Backend
+### 4.4 Run the Backend
 
 ```bash
 cd backend
@@ -407,37 +394,64 @@ Jira integration allows Sprynt to create and update issues during incidents.
 
 ---
 
-## 9. Deepgram (Speech-to-Text)
+## 9. Skribby (Meeting Bot API)
 
-Deepgram provides real-time streaming transcription with speaker diarization.
+Skribby is a managed meeting bot API that handles joining Zoom, Google Meet, and Microsoft Teams meetings, recording audio, and providing real-time transcription — all through a single REST API. This replaces the need for a self-managed Playwright browser bot and a separate Deepgram STT integration.
 
-### 9.1 Create a Deepgram Account
+### 9.1 Create a Skribby Account
 
-1. Go to [https://deepgram.com](https://deepgram.com) and click **Sign Up** or **Get Started Free**.
-2. Sign up with GitHub or email.
-3. Deepgram offers $200 in free credits — no credit card required initially.
+1. Go to [https://platform.skribby.io/register](https://platform.skribby.io/register).
+2. Sign up with GitHub or Google.
+3. Skribby offers 5 free hours on signup — no credit card required initially.
 
 ### 9.2 Get an API Key
 
-1. After sign-in, go to the [Deepgram Console](https://console.deepgram.com/).
-2. Navigate to **API Keys** in the left sidebar.
-3. Click **Create a New API Key**.
-   - **Name:** `Sprynt-dev`
-   - **Permissions:** Member (or Admin)
-   - **Expiration:** No expiration (for dev)
-4. Copy the key → This is `DEEPGRAM_API_KEY`.
+1. After sign-in, go to the [Skribby Dashboard](https://platform.skribby.io).
+2. Navigate to your account settings or API key section.
+3. Copy your API key → This is `SKRIBBY_API_KEY`.
 
 ### 9.3 Configuration Notes
 
-- The project uses the **Nova-2** model (`model="nova-2"`) for best accuracy.
-- Speaker diarization is enabled with `diarize=True`.
-- Interim (partial) results are enabled with `interim_results=True` to give the UI real-time feedback.
+- The project uses the **`deepgram-nova3-realtime`** transcription model for real-time streaming with speaker diarization.
+- When creating a bot, you receive a `websocket_url` for real-time transcript events and a `websocket_read_only_url` (safe to expose to the frontend if needed).
+- Skribby handles all platform-specific join logic (Zoom ZAK tokens, Teams authentication, Google Meet join flows) — no Playwright selectors or browser automation needed.
+- The `service` parameter must match the meeting platform: `"zoom"`, `"gmeet"`, or `"teams"`. Auto-detect from the meeting URL in your code.
+- Recordings are stored by Skribby for 1 week by default. Download and archive to S3 when the incident is resolved.
+- Pricing: $0.35/hour base + transcription model cost. Deepgram Nova-3 realtime is approximately $0.87/hour total.
+
+### 9.4 Deepgram API Key (Optional — Bring Your Own Key)
+
+Skribby can use its own Deepgram integration by default. However, if you want to use your own Deepgram API key for billing purposes:
+
+1. Go to [https://deepgram.com](https://deepgram.com) and sign up (free $200 credit).
+2. Create an API key in the Deepgram console.
+3. Configure it in the Skribby dashboard under **Transcription Credentials**.
+
+For the MVP, using Skribby's built-in transcription is simpler and recommended.
+
+### 9.5 Testing the Integration
+
+Test that you can create a bot:
+
+```bash
+curl -X POST 'https://platform.skribby.io/api/v1/bot' \
+  -H 'Authorization: Bearer YOUR_SKRIBBY_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "transcription_model": "deepgram-nova3-realtime",
+    "meeting_url": "https://meet.google.com/your-test-meeting",
+    "service": "gmeet",
+    "bot_name": "Sprynt AI"
+  }'
+```
+
+You should receive a JSON response with `id`, `status`, `websocket_url`, and `websocket_read_only_url`.
 
 ---
 
-## 10. ElevenLabs (Text-to-Speech)
+## 10. ElevenLabs (Text-to-Speech) — Stretch
 
-ElevenLabs synthesizes voice responses that Sprynt speaks aloud in meetings.
+ElevenLabs synthesizes voice responses. For the MVP, Sprynt responds via meeting chat text (using Skribby's chat-message action) and dashboard display. ElevenLabs audio synthesis and playback into the meeting is a **stretch goal** — set it up only if you have time after core features work.
 
 ### 10.1 Create an ElevenLabs Account
 
@@ -476,9 +490,9 @@ Sprynt uses an LLM for task extraction, deep dive ranking, question answering, a
 
 The project uses `claude-sonnet-4-6` for all LLM calls.
 
-### 11.2 OpenAI (Required for Whisper, Optional for LLM)
+### 11.2 OpenAI (Optional for LLM)
 
-Even if you use Anthropic as your primary LLM, you need an OpenAI key for the Whisper speech-to-text fallback.
+OpenAI is only needed if you want to use GPT-4o as your LLM provider instead of Anthropic. **Whisper is no longer required** since Skribby handles all speech-to-text via Deepgram Nova-3.
 
 1. Go to [https://platform.openai.com](https://platform.openai.com).
 2. Sign up and add billing information.
@@ -487,58 +501,11 @@ Even if you use Anthropic as your primary LLM, you need an OpenAI key for the Wh
 
 ---
 
-## 12. Playwright (Meeting Bot)
+## 12. Docker
 
-Playwright drives the headless browser that joins meetings. The Python package was already installed in Section 4.2, but you need the browser binary.
+Docker is used to containerize the backend for consistent environments.
 
-### 12.1 Install Chromium
-
-```bash
-cd backend
-source venv/bin/activate
-playwright install chromium
-```
-
-### 12.2 System Dependencies (Linux Only)
-
-On Ubuntu/Debian, Playwright may need additional system libraries:
-
-```bash
-playwright install-deps chromium
-```
-
-This installs `libgbm1`, `libasound2`, and other graphics/audio libraries that Chromium needs.
-
-### 12.3 Testing Playwright
-
-Verify the installation:
-
-```bash
-python3 -c "
-import asyncio
-from playwright.async_api import async_playwright
-
-async def test():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto('https://example.com')
-        print('Title:', await page.title())
-        await browser.close()
-
-asyncio.run(test())
-"
-```
-
-You should see: `Title: Example Domain`.
-
----
-
-## 13. Docker
-
-Docker is used to containerize the backend and bot worker for consistent environments.
-
-### 13.1 Verify Docker
+### 12.1 Verify Docker
 
 ```bash
 docker run hello-world
@@ -546,15 +513,15 @@ docker run hello-world
 
 If this prints "Hello from Docker!", you're good.
 
-### 13.2 Docker Compose
+### 12.2 Docker Compose
 
-The project includes a `docker-compose.yml` at the repo root with services for `backend` and `bot_worker`. You don't need to build containers for local development (run directly with `uvicorn` and `python -m bot_worker.runner`), but Docker is used for integration testing and deployment.
+The project includes a `docker-compose.yml` at the repo root with the backend service. You don't need to build containers for local development (run directly with `uvicorn`), but Docker is used for integration testing and deployment. Note: there is no separate bot worker container — Skribby runs the meeting bot externally.
 
 ---
 
-## 14. Environment Files
+## 13. Environment Files
 
-### 14.1 Backend (`backend/.env`)
+### 13.1 Backend (`backend/.env`)
 
 Create `backend/.env` with the following. Replace placeholder values with your actual credentials from the steps above:
 
@@ -574,15 +541,14 @@ S3_BUCKET_NAME=Sprynt-artifacts
 # LLM
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your_anthropic_key
-OPENAI_API_KEY=your_openai_key
+OPENAI_API_KEY=your_openai_key                       # Only needed if using OpenAI as LLM provider
 
-# ElevenLabs
+# Skribby (Meeting Bot API)
+SKRIBBY_API_KEY=your_skribby_api_key
+
+# ElevenLabs (Stretch — not required for MVP)
 ELEVENLABS_API_KEY=your_elevenlabs_key
 ELEVENLABS_VOICE_ID=your_voice_id
-
-# STT
-STT_PROVIDER=deepgram
-DEEPGRAM_API_KEY=your_deepgram_key
 
 # GitHub OAuth
 GITHUB_CLIENT_ID=your_github_client_id
@@ -595,7 +561,7 @@ JIRA_CLIENT_SECRET=your_jira_client_secret
 JIRA_REDIRECT_URI=http://localhost:8000/api/integrations/jira/callback
 ```
 
-### 14.2 Frontend (`frontend/.env.local`)
+### 13.2 Frontend (`frontend/.env.local`)
 
 Create `frontend/.env.local`:
 
@@ -606,7 +572,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_WS_URL=ws://localhost:8000
 ```
 
-### 14.3 Security Rules
+### 13.3 Security Rules
 
 - **Never commit `.env` or `.env.local` to Git.** Add both to `.gitignore`.
 - **Never put `SUPABASE_SERVICE_ROLE_KEY` in the frontend.** It bypasses Row Level Security.
@@ -615,7 +581,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8000
 
 ---
 
-## 15. Verification Checklist
+## 14. Verification Checklist
 
 Run through this checklist to confirm everything is set up correctly before starting sprint work.
 
@@ -625,12 +591,12 @@ Run through this checklist to confirm everything is set up correctly before star
 | 2 | Node version | `node --version` | 20.x |
 | 3 | Backend venv active | `which python` | Points to `backend/venv/bin/python` |
 | 4 | Backend deps installed | `python -c "import fastapi; print(fastapi.__version__)"` | 0.116+ |
-| 5 | Playwright browser | `python -c "from playwright.sync_api import sync_playwright; print('OK')"` | OK |
-| 6 | Frontend deps installed | `cd frontend && npm ls next` | next@14.x.x |
-| 7 | Backend starts | `cd backend && uvicorn app.main:app --port 8000` | Swagger at localhost:8000/docs |
-| 8 | Frontend starts | `cd frontend && npm run dev` | Page at localhost:3000 |
-| 9 | Supabase connection | Run a test query via Supabase dashboard SQL editor | Query succeeds |
-| 10 | AWS S3 bucket exists | Check S3 console | Bucket listed |
+| 5 | Frontend deps installed | `cd frontend && npm ls next` | next@14.x.x |
+| 6 | Backend starts | `cd backend && uvicorn app.main:app --port 8000` | Swagger at localhost:8000/docs |
+| 7 | Frontend starts | `cd frontend && npm run dev` | Page at localhost:3000 |
+| 8 | Supabase connection | Run a test query via Supabase dashboard SQL editor | Query succeeds |
+| 9 | AWS S3 bucket exists | Check S3 console | Bucket listed |
+| 10 | Skribby API key works | `curl -H "Authorization: Bearer YOUR_KEY" https://platform.skribby.io/api/v1/bot` | Returns JSON (may be empty list or 401 if key wrong) |
 | 11 | `.env` files in `.gitignore` | `grep ".env" .gitignore` | Both patterns present |
 
 Once all checks pass, you're ready to begin Sprint 1.
