@@ -1,22 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { CodePanel } from "@/components/deep_dive/CodePanel";
+import { CodeSnippet } from "@/components/deep_dive/CodeSnippet";
+import { EvidenceCard } from "@/components/deep_dive/EvidenceCard";
+import { SuspectFileList } from "@/components/deep_dive/SuspectFileList";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { OnboardingGate } from "@/components/shared/OnboardingGate";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useDeepDiveFileContent,
   useDeepDiveResults,
   useTriggerDeepDive,
 } from "@/hooks/useDeepDive";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+import { useWorkspaceDefaults } from "@/hooks/useWorkspaceDefaults";
 
 export default function DeepDivePage() {
   const params = useParams<{ incidentId: string }>();
@@ -25,11 +27,17 @@ export default function DeepDivePage() {
   const [selectedResultId, setSelectedResultId] = useState<string | undefined>();
   const resultsQuery = useDeepDiveResults(incidentId);
   const triggerMutation = useTriggerDeepDive();
-  const fileContent = useDeepDiveFileContent(incidentId, selectedResultId);
+  const defaults = useWorkspaceDefaults();
+  const effectiveSelectedResultId = selectedResultId ?? resultsQuery.data?.[0]?.id;
+  const fileQuery = useDeepDiveFileContent(incidentId, effectiveSelectedResultId);
 
   const results = useMemo(
     () => [...(resultsQuery.data ?? [])].sort((a, b) => a.rank - b.rank),
     [resultsQuery.data],
+  );
+  const selectedResult = useMemo(
+    () => results.find((result) => result.id === effectiveSelectedResultId) ?? null,
+    [results, effectiveSelectedResultId],
   );
 
   return (
@@ -48,68 +56,63 @@ export default function DeepDivePage() {
               </Button>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+            <div className="hidden gap-4 lg:grid lg:grid-cols-[1fr_1.2fr]">
               <div className="space-y-3">
-                {results.length === 0 ? (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>No deep dive results</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        Trigger analysis to populate suspect files.
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  results.map((result) => (
-                    <Card
-                      key={result.id}
-                      className={selectedResultId === result.id ? "ring-2 ring-primary/40" : ""}
-                    >
-                      <CardHeader>
-                        <CardTitle className="text-base">{result.suspect_file}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <Badge variant="secondary">
-                          Confidence {(result.confidence * 100).toFixed(0)}%
-                        </Badge>
-                        <p className="text-xs text-muted-foreground">
-                          Rank #{result.rank} • Lines {result.suspect_lines_start ?? "?"}-
-                          {result.suspect_lines_end ?? "?"}
-                        </p>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => setSelectedResultId(result.id)}
-                        >
-                          View File
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
+                <SuspectFileList
+                  results={results}
+                  selectedResultId={effectiveSelectedResultId}
+                  onSelectResult={setSelectedResultId}
+                />
               </div>
 
               <Card className="overflow-hidden">
                 <CardHeader>
                   <CardTitle>Code Panel</CardTitle>
                 </CardHeader>
-                <CardContent className="h-[560px]">
-                  {selectedResultId ? (
-                    <MonacoEditor
-                      height="100%"
-                      language="typescript"
-                      value={fileContent.data ?? "Loading file..."}
-                      options={{ readOnly: true, minimap: { enabled: false } }}
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Select a suspect file to inspect full source.
-                    </p>
-                  )}
+                <CardContent className="h-[400px] md:h-[560px] lg:h-[calc(100vh-300px)]">
+                  <CodePanel
+                    filePath={selectedResult?.suspect_file}
+                    fileContent={fileQuery.data}
+                    lineStart={selectedResult?.suspect_lines_start}
+                    lineEnd={selectedResult?.suspect_lines_end}
+                    isLoading={fileQuery.isLoading}
+                  />
                 </CardContent>
               </Card>
+            </div>
+
+            <div className="mt-4 hidden lg:block">
+              <EvidenceCard result={selectedResult ?? undefined} defaultRepo={defaults.data?.default_repo} />
+            </div>
+
+            <div className="lg:hidden">
+              <Tabs defaultValue="suspects">
+                <TabsList className="mb-3">
+                  <TabsTrigger value="suspects">Suspects</TabsTrigger>
+                  <TabsTrigger value="code">Code</TabsTrigger>
+                  <TabsTrigger value="evidence">Evidence</TabsTrigger>
+                </TabsList>
+                <TabsContent value="suspects">
+                  <SuspectFileList
+                    results={results}
+                    selectedResultId={effectiveSelectedResultId}
+                    onSelectResult={setSelectedResultId}
+                  />
+                </TabsContent>
+                <TabsContent value="code">
+                  {selectedResult ? (
+                    <CodeSnippet result={selectedResult} fileContent={fileQuery.data} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Select a suspect file first.</p>
+                  )}
+                </TabsContent>
+                <TabsContent value="evidence">
+                  <EvidenceCard
+                    result={selectedResult ?? undefined}
+                    defaultRepo={defaults.data?.default_repo}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           </main>
           <MobileNav />

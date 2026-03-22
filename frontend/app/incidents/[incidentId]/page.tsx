@@ -22,6 +22,7 @@ import { usePrimaryWorkspace } from "@/hooks/useWorkspaces";
 import { api } from "@/lib/api";
 import { severityToBadgeVariant } from "@/lib/utils";
 import { useIncidentStore } from "@/stores/incidentStore";
+import { useUIStore } from "@/stores/uiStore";
 
 export default function IncidentRoomPage() {
   const params = useParams<{ incidentId: string }>();
@@ -36,6 +37,8 @@ export default function IncidentRoomPage() {
   const suspectFiles = useIncidentStore((store) => store.suspectFiles);
   const upsertActionItem = useIncidentStore((store) => store.upsertActionItem);
   const setSuspectFiles = useIncidentStore((store) => store.setSuspectFiles);
+  const activePanel = useUIStore((store) => store.activePanel);
+  const setActivePanel = useUIStore((store) => store.setActivePanel);
 
   useIncidentSocket(incidentId);
 
@@ -130,7 +133,12 @@ export default function IncidentRoomPage() {
             </div>
 
             <div className="lg:hidden">
-              <Tabs defaultValue="transcript">
+              <Tabs
+                value={activePanel}
+                onValueChange={(value) =>
+                  setActivePanel((value as "transcript" | "tasks" | "deep-dive") ?? "transcript")
+                }
+              >
                 <TabsList className="mb-3">
                   <TabsTrigger value="transcript">Transcript</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
