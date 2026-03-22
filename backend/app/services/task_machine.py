@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_maker
 from app.models.action_item import ActionItem
 from app.services.llm import detect_reassignment, extract_tasks_from_chunk
-from app.services.jira import create_jira_issue
+from app.services.jira import create_jira_issue, update_jira_assignee, get_jira_users
 from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def _get_active_tasks(
     result = await db.execute(
         select(ActionItem).where(
             ActionItem.incident_id == uuid.UUID(incident_id),
-            ActionItem.status.in_(["active", "synced", "proposed"]),
+            ActionItem.status.in_(["active", "synced", "proposed", "reassigned"]),
         )
     )
     return list(result.scalars().all())
@@ -101,7 +101,7 @@ async def _sync_to_jira(
     jira_cloud_id: str,
     jira_project_key: str,
 ) -> None:
-    """Create a Jira issue for the task. On failure, revert status to active."""
+    """Create or update a Jira issue for the task. On failure, revert to active."""
     async with async_session_maker() as db:
         result = await db.execute(
             select(ActionItem).where(ActionItem.id == uuid.UUID(task_id))
@@ -111,29 +111,78 @@ async def _sync_to_jira(
             return
 
         try:
-            jira_result = await create_jira_issue(
-                access_token=jira_access_token,
-                cloud_id=jira_cloud_id,
-                project_key=jira_project_key,
-                summary=task.normalized_task,
-                description=f"Owner (from call): {task.owner or 'Unassigned'}",
-                priority="High" if task.priority in ("P1", "P2") else "Medium",
-            )
-            task.jira_issue_key = jira_result.get("key")
-            task.status = "synced"
-            task.synced_at = datetime.now(timezone.utc)
-            await db.commit()
-
-            logger.info(
-                "Task synced to Jira: %s → %s",
-                task_id, task.jira_issue_key,
-            )
+            if task.jira_issue_key:
+                # Task was previously synced — update the existing Jira issue.
+                await _update_jira_issue(
+                    task, jira_access_token, jira_cloud_id,
+                )
+                task.status = "synced"
+                task.synced_at = datetime.now(timezone.utc)
+                await db.commit()
+                logger.info(
+                    "Task re-synced to Jira (update): %s → %s",
+                    task_id, task.jira_issue_key,
+                )
+            else:
+                # New task — create a Jira issue.
+                jira_result = await create_jira_issue(
+                    access_token=jira_access_token,
+                    cloud_id=jira_cloud_id,
+                    project_key=jira_project_key,
+                    summary=task.normalized_task,
+                    description=f"Owner (from call): {task.owner or 'Unassigned'}",
+                    priority="High" if task.priority in ("P1", "P2") else "Medium",
+                )
+                task.jira_issue_key = jira_result.get("key")
+                task.status = "synced"
+                task.synced_at = datetime.now(timezone.utc)
+                await db.commit()
+                logger.info(
+                    "Task synced to Jira (create): %s → %s",
+                    task_id, task.jira_issue_key,
+                )
         except Exception:
             logger.exception("Jira sync failed for task %s; reverting to active", task_id)
             task.status = "active"
             await db.commit()
 
         await _push_task_update(incident_id, task)
+
+
+async def _update_jira_issue(
+    task: ActionItem,
+    jira_access_token: str,
+    jira_cloud_id: str,
+) -> None:
+    """Best-effort Jira assignee update for reassigned tasks.
+
+    Attempts to match the spoken owner name to a Jira account ID via user
+    search.  If no match is found the ticket is left with its current
+    assignee — full name-to-ID matching is refined in Sprint 3 (E3).
+    """
+    if not task.owner or not task.jira_issue_key:
+        return
+
+    try:
+        users = await get_jira_users(jira_access_token, jira_cloud_id, task.owner)
+        if users:
+            await update_jira_assignee(
+                jira_access_token, jira_cloud_id,
+                task.jira_issue_key, users[0]["accountId"],
+            )
+            logger.info(
+                "Jira assignee updated: %s → %s (%s)",
+                task.jira_issue_key, task.owner, users[0]["accountId"],
+            )
+        else:
+            logger.warning(
+                "No Jira user match for '%s'; skipping assignee update on %s",
+                task.owner, task.jira_issue_key,
+            )
+    except Exception:
+        logger.exception(
+            "Jira assignee update failed for %s", task.jira_issue_key,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +196,11 @@ async def _stabilize_and_sync(
     jira_cloud_id: str | None,
     jira_project_key: str | None,
 ) -> None:
-    """Wait for the stabilization window, then promote and sync."""
+    """Wait for the stabilization window, then promote and sync.
+
+    Handles both new tasks (proposed → active → synced) and reassigned tasks
+    (reassigned → active → synced via Jira update).
+    """
     try:
         await asyncio.sleep(STABILIZATION_SECONDS)
     except asyncio.CancelledError:
@@ -164,7 +217,7 @@ async def _stabilize_and_sync(
         if task is None:
             return
 
-        if task.status != "proposed":
+        if task.status not in ("proposed", "reassigned"):
             return
 
         task.status = "active"
