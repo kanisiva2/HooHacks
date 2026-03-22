@@ -72,6 +72,26 @@ async def get_recent_commits(
     ]
 
 
+async def get_user_repos(token: str, per_page: int = 30) -> list[dict]:
+    """Return repos the authenticated user has access to, sorted by last update."""
+    url = f"{GITHUB_API}/user/repos"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            url,
+            headers=_headers(token),
+            params={"sort": "updated", "per_page": per_page},
+        )
+        resp.raise_for_status()
+    return [
+        {
+            "full_name": r["full_name"],
+            "description": r.get("description") or "",
+            "default_branch": r.get("default_branch", "main"),
+        }
+        for r in resp.json()
+    ]
+
+
 async def get_commit_diff(token: str, repo_full_name: str, sha: str) -> str:
     """Return the diff text for a commit, truncated to MAX_DIFF_CHARS."""
     url = f"{GITHUB_API}/repos/{repo_full_name}/commits/{sha}"

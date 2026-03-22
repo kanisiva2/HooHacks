@@ -1,11 +1,13 @@
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { OnboardingGate } from "@/components/shared/OnboardingGate";
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function IncidentsPage() {
   return (
     <ProtectedPage>
+      <OnboardingGate>
       <div className="flex min-h-screen">
         <Sidebar />
         <main className="w-full p-6 pb-20 md:pb-6">
@@ -24,6 +26,7 @@ export default function IncidentsPage() {
         </main>
         <MobileNav />
       </div>
+    </OnboardingGate>
     </ProtectedPage>
   );
 }
