@@ -1,4 +1,4 @@
-# PagerPilot — Work Split
+# Sprynt — Work Split
 
 **Version:** 2.0
 **Engineers:** 4 (E1, E2, E3, E4)
@@ -130,7 +130,7 @@ Create `components/layout/MobileNav.tsx` — bottom tab bar for mobile view.
 
 **Step 9 — Dashboard page stub**
 
-Create `app/dashboard/page.tsx` wrapped in `ProtectedPage`. For now, just show a heading "PagerPilot Dashboard" and placeholder cards for "Active Incidents" and "Recent Tasks". This will be populated in later sprints.
+Create `app/dashboard/page.tsx` wrapped in `ProtectedPage`. For now, just show a heading "Sprynt Dashboard" and placeholder cards for "Active Incidents" and "Recent Tasks". This will be populated in later sprints.
 
 **Step 10 — Type definitions** (ref: Technical Spec §5.7 for type shapes)
 
@@ -699,7 +699,7 @@ Complete `bot_worker/audio_injector.py`:
 1. Creating an incident with a meeting link launches the Playwright bot (test with a mock meeting URL or a real test meeting).
 2. Audio from the bot flows through the STT pipeline and transcript chunks appear in the UI.
 3. Tasks extracted from speech appear in the task board, transition through states, and sync to Jira with proper ADF descriptions.
-4. Addressing PagerPilot by name triggers voice response (verify audio playback in meeting).
+4. Addressing Sprynt by name triggers voice response (verify audio playback in meeting).
 5. Deep dive triggers automatically after sufficient transcript and results display in the Monaco code panel.
 6. Resolving an incident exports artifacts to S3.
 7. Mobile layout works on a phone-sized viewport.

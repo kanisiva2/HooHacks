@@ -1,9 +1,9 @@
-# PagerPilot — Setup Guide
+# Sprynt — Setup Guide
 
 **Version:** 2.0
 **Last Updated:** March 21, 2026
 
-This document walks every engineer through the full environment setup required to develop PagerPilot. Complete **all sections** before starting any sprint work.
+This document walks every engineer through the full environment setup required to develop Sprynt. Complete **all sections** before starting any sprint work.
 
 ---
 
@@ -68,8 +68,8 @@ docker compose version # Docker Compose version v2.20+
 ### 2.1 Clone the Repository
 
 ```bash
-git clone <your-repo-url> pagerpilot
-cd pagerpilot
+git clone <your-repo-url> Sprynt
+cd Sprynt
 ```
 
 ### 2.2 Create the Directory Structure
@@ -116,7 +116,7 @@ Supabase provides managed Postgres, authentication, and connection pooling. The 
 2. Sign up with GitHub (recommended — simplifies future GitHub integrations).
 3. Once logged in, click **New Project**.
 4. Fill in:
-   - **Name:** `pagerpilot-dev`
+   - **Name:** `Sprynt-dev`
    - **Database Password:** Generate a strong password and **save it in your password manager** — you'll need it for `DATABASE_URL`.
    - **Region:** Choose the region closest to your team (e.g., `us-east-1` for US East).
 5. Click **Create new project**. Wait 1–2 minutes for provisioning.
@@ -156,7 +156,7 @@ brew install supabase/tap/supabase    # macOS
 # or: npm install -g supabase         # Any platform
 
 # Start local Supabase (requires Docker running)
-cd pagerpilot
+cd Sprynt
 supabase init
 supabase start
 ```
@@ -316,7 +316,7 @@ S3 stores meeting audio recordings, transcript exports, and generated reports.
 1. In the AWS Console, search for **S3** and open the S3 service.
 2. Click **Create bucket**.
 3. Configure:
-   - **Bucket name:** `pagerpilot-artifacts` (must be globally unique — append your team name if taken, e.g., `pagerpilot-artifacts-teamname`)
+   - **Bucket name:** `Sprynt-artifacts` (must be globally unique — append your team name if taken, e.g., `Sprynt-artifacts-teamname`)
    - **Region:** `us-east-1` (or match your Supabase region)
    - **Block all public access:** Keep **enabled** (artifacts are served via pre-signed URLs, not public access)
    - Leave all other settings as defaults.
@@ -326,7 +326,7 @@ S3 stores meeting audio recordings, transcript exports, and generated reports.
 
 1. In the AWS Console, search for **IAM** and open it.
 2. Go to **Users → Create user**.
-3. **User name:** `pagerpilot-backend`
+3. **User name:** `Sprynt-backend`
 4. Click **Next**. On the permissions page, click **Attach policies directly**.
 5. Search for and select **AmazonS3FullAccess** (for development; scope down to specific bucket in production).
 6. Click **Next → Create user**.
@@ -342,14 +342,14 @@ S3 stores meeting audio recordings, transcript exports, and generated reports.
 
 ## 7. GitHub OAuth App
 
-The GitHub OAuth App allows PagerPilot to access users' repositories for the Deep Dive investigation.
+The GitHub OAuth App allows Sprynt to access users' repositories for the Deep Dive investigation.
 
 ### 7.1 Create a GitHub OAuth App
 
 1. Go to [https://github.com/settings/developers](https://github.com/settings/developers) (or for an org: **Organization Settings → Developer settings → OAuth Apps**).
 2. Click **New OAuth App**.
 3. Fill in:
-   - **Application name:** `PagerPilot Dev`
+   - **Application name:** `Sprynt Dev`
    - **Homepage URL:** `http://localhost:3000`
    - **Authorization callback URL:** `http://localhost:8000/api/integrations/github/callback`
 4. Click **Register application**.
@@ -367,19 +367,19 @@ When the OAuth flow redirects users, request these scopes:
 
 ## 8. Jira OAuth 2.0 (3LO)
 
-Jira integration allows PagerPilot to create and update issues during incidents.
+Jira integration allows Sprynt to create and update issues during incidents.
 
 ### 8.1 Create an Atlassian Developer Account
 
 1. Go to [https://developer.atlassian.com](https://developer.atlassian.com).
 2. Sign in with your Atlassian account (or create one at [https://id.atlassian.com/signup](https://id.atlassian.com/signup)).
-3. You also need a Jira Cloud instance for testing. Go to [https://www.atlassian.com/software/jira/free](https://www.atlassian.com/software/jira/free) and create a free Jira Cloud site (e.g., `pagerpilot-dev.atlassian.net`).
+3. You also need a Jira Cloud instance for testing. Go to [https://www.atlassian.com/software/jira/free](https://www.atlassian.com/software/jira/free) and create a free Jira Cloud site (e.g., `Sprynt-dev.atlassian.net`).
 
 ### 8.2 Create an OAuth 2.0 (3LO) App
 
 1. Go to [https://developer.atlassian.com/console/myapps/](https://developer.atlassian.com/console/myapps/).
 2. Click **Create** → **OAuth 2.0 integration**.
-3. **Name:** `PagerPilot Dev` → Click **Create**.
+3. **Name:** `Sprynt Dev` → Click **Create**.
 4. In the app settings:
 
 **Permissions tab:**
@@ -422,7 +422,7 @@ Deepgram provides real-time streaming transcription with speaker diarization.
 1. After sign-in, go to the [Deepgram Console](https://console.deepgram.com/).
 2. Navigate to **API Keys** in the left sidebar.
 3. Click **Create a New API Key**.
-   - **Name:** `pagerpilot-dev`
+   - **Name:** `Sprynt-dev`
    - **Permissions:** Member (or Admin)
    - **Expiration:** No expiration (for dev)
 4. Copy the key → This is `DEEPGRAM_API_KEY`.
@@ -437,7 +437,7 @@ Deepgram provides real-time streaming transcription with speaker diarization.
 
 ## 10. ElevenLabs (Text-to-Speech)
 
-ElevenLabs synthesizes voice responses that PagerPilot speaks aloud in meetings.
+ElevenLabs synthesizes voice responses that Sprynt speaks aloud in meetings.
 
 ### 10.1 Create an ElevenLabs Account
 
@@ -464,7 +464,7 @@ ElevenLabs synthesizes voice responses that PagerPilot speaks aloud in meetings.
 
 ## 11. LLM Provider (Anthropic / OpenAI)
 
-PagerPilot uses an LLM for task extraction, deep dive ranking, question answering, and reassignment detection. You need at least one provider; having both gives you a fallback.
+Sprynt uses an LLM for task extraction, deep dive ranking, question answering, and reassignment detection. You need at least one provider; having both gives you a fallback.
 
 ### 11.1 Anthropic (Recommended Primary)
 
@@ -569,7 +569,7 @@ DATABASE_URL=postgresql+asyncpg://postgres.your-ref:your-password@aws-0-us-east-
 AWS_ACCESS_KEY_ID=your_access_key_id
 AWS_SECRET_ACCESS_KEY=your_secret_access_key
 AWS_REGION=us-east-1
-S3_BUCKET_NAME=pagerpilot-artifacts
+S3_BUCKET_NAME=Sprynt-artifacts
 
 # LLM
 LLM_PROVIDER=anthropic

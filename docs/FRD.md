@@ -1,4 +1,4 @@
-# PagerPilot  
+# Sprynt  
 ## Functional Requirements Document
 **AI incident operator for real-time meeting participation, codebase deep dives, and execution orchestration**  
 **Version 1.0**  |  **Status: Build-ready MVP specification**  
@@ -6,12 +6,12 @@
 **Audience:** engineering team, hackathon team, judges, recruiters, and future maintainers
 
 ### Document intent
-This FRD consolidates the final product scope, system architecture, feature behavior, data model, external integrations, and implementation sequence needed to begin building PagerPilot immediately. The goal is to eliminate ambiguity before coding starts.
+This FRD consolidates the final product scope, system architecture, feature behavior, data model, external integrations, and implementation sequence needed to begin building Sprynt immediately. The goal is to eliminate ambiguity before coding starts.
 
 ---
 
 # 1. Product Overview
-PagerPilot is a cloud-backed AI incident operator that joins engineering outage calls as an active participant, listens to the live conversation, answers spoken questions, converts verbal assignments into structured execution, investigates the connected codebase in real time, and surfaces likely files, commits, and next steps through a web dashboard that is also usable from a phone.
+Sprynt is a cloud-backed AI incident operator that joins engineering outage calls as an active participant, listens to the live conversation, answers spoken questions, converts verbal assignments into structured execution, investigates the connected codebase in real time, and surfaces likely files, commits, and next steps through a web dashboard that is also usable from a phone.
 
 | Dimension | Final definition |
 |---|---|
@@ -21,7 +21,7 @@ PagerPilot is a cloud-backed AI incident operator that joins engineering outage 
 | Product form | A responsive web app with a desktop-grade dashboard and mobile-first monitoring flow, backed by a cloud orchestration layer and a browser-automation meeting bot. |
 
 ### One-line pitch
-PagerPilot is a voice-enabled AI incident operator that joins outage calls, listens in real time, answers spoken questions, investigates the codebase, updates Jira, and highlights likely root-cause files before engineers even open their laptops.
+Sprynt is a voice-enabled AI incident operator that joins outage calls, listens in real time, answers spoken questions, investigates the codebase, updates Jira, and highlights likely root-cause files before engineers even open their laptops.
 
 ---
 
@@ -42,7 +42,7 @@ PagerPilot is a voice-enabled AI incident operator that joins outage calls, list
 ---
 
 # 3. Target Users and Primary Use Cases
-- **On-call engineer:** Gets paged, opens PagerPilot on a phone, launches the agent into the call, and uses the dashboard to monitor findings while still mobile.
+- **On-call engineer:** Gets paged, opens Sprynt on a phone, launches the agent into the call, and uses the dashboard to monitor findings while still mobile.
 - **Incident commander:** Uses the live transcript, task board, and deep dive evidence panel to keep ownership clear and guide response decisions.
 - **Engineering manager or platform lead:** Reviews incident history, generated reports, and task completion after the outage for accountability and learning.
 - **Hackathon judge / recruiter lens:** Sees a credible AI system with real integrations, cloud architecture, meeting participation, and measurable enterprise impact.
@@ -82,7 +82,7 @@ The end product is one responsive web application with two usage modes: desktop 
 ---
 
 # 7. Core Architecture
-PagerPilot uses a thin-client plus cloud-brains architecture.
+Sprynt uses a thin-client plus cloud-brains architecture.
 
 ### Architecture principle
 The browser and phone are control-and-display surfaces. Almost all meaningful computation runs in the cloud backend or in supporting workers. The meeting bot is the only hybrid edge component because it needs to join a call and route audio.
@@ -186,7 +186,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - **Step 1:** User clicks Start Incident from desktop or mobile.
 - **Step 2:** User enters title, severity, and meeting link or meeting credentials.
 - **Step 3:** Frontend sends incident creation request to backend and creates a live incident room.
-- **Step 4:** Meeting bot is launched and joins the meeting as PagerPilot AI.
+- **Step 4:** Meeting bot is launched and joins the meeting as Sprynt AI.
 - **Step 5:** Dashboard moves to the Incidents tab and shows live agent status.
 
 ## 13.3 Live meeting participation
@@ -208,7 +208,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 - **Step 2:** The task appears instantly in the UI as a structured action item.
 - **Step 3:** A short stabilization delay prevents duplicate or noisy task creation.
 - **Step 4:** Once stable, Jira issue creation or update is triggered.
-- **Step 5:** If ownership changes verbally, PagerPilot updates the same task rather than creating a second task.
+- **Step 5:** If ownership changes verbally, Sprynt updates the same task rather than creating a second task.
 
 ## 13.6 Post-incident artifacts
 - **Step 1:** Transcript export, report summary, and any generated artifacts are saved to S3.
@@ -239,7 +239,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 
 ## Meeting bot
 - The system shall accept a meeting link or credential set and launch a Playwright-driven bot.
-- The bot shall join the meeting under a visible agent name such as PagerPilot AI.
+- The bot shall join the meeting under a visible agent name such as Sprynt AI.
 - The bot shall capture incoming meeting audio for STT processing.
 - The bot shall be able to play synthesized speech back into the meeting.
 
@@ -288,7 +288,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 ---
 
 # 15. Real-Time Task State Machine
-This subsystem is critical. PagerPilot must create tasks during the meeting, but not naively from every sentence.
+This subsystem is critical. Sprynt must create tasks during the meeting, but not naively from every sentence.
 
 | State | Meaning | Transition trigger |
 |---|---|---|
@@ -328,7 +328,7 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 ---
 
 # 18. Voice Interaction Design
-- **Inbound voice:** Participants ask questions such as "PagerPilot, what have you found?"
+- **Inbound voice:** Participants ask questions such as "Sprynt, what have you found?"
 - **Detection:** Transcript parser identifies direct-address queries and routes them to a response generator.
 - **Response style:** One or two concise sentences maximum. High confidence, evidence-backed, no rambling.
 - **Outbound voice:** ElevenLabs synthesizes the answer, and the meeting bot plays the audio into the call.
@@ -383,7 +383,7 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 - 5. Bot may announce the strongest finding.
 
 ## 21.4 Spoken question to spoken answer
-- 1. Participant asks, for example, "PagerPilot, what files are suspicious?"
+- 1. Participant asks, for example, "Sprynt, what files are suspicious?"
 - 2. Transcript parser labels the chunk as a direct-address question.
 - 3. Response generator uses current incident state and deep dive results.
 - 4. Text answer is synthesized with ElevenLabs.
@@ -403,7 +403,7 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 # 23. Error Handling and Fallbacks
 - **Meeting join failure:** Show clear UI state, allow retry, and support backup demo mode with controlled audio input.
 - **STT degradation:** Continue UI updates with whatever transcript quality is available; retain the raw audio artifact for replay.
-- **Integration failure:** Task remains active in PagerPilot UI even if Jira sync fails; show explicit sync error state instead of dropping the task.
+- **Integration failure:** Task remains active in Sprynt UI even if Jira sync fails; show explicit sync error state instead of dropping the task.
 - **Deep dive uncertainty:** Show confidence and evidence; do not overstate findings as guaranteed root cause.
 - **Voice failure:** Render the last spoken message in text on dashboard so the bot remains understandable.
 
@@ -447,12 +447,12 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 
 # 27. Demo Script Requirements
 - 1. User launches incident from the app and enters a meeting link.
-- 2. PagerPilot AI joins the meeting.
+- 2. Sprynt AI joins the meeting.
 - 3. Participants verbally describe the outage and assign work.
 - 4. Transcript appears live; tasks appear and then sync to Jira.
 - 5. Ownership changes verbally; UI and Jira update accordingly.
-- 6. A participant asks PagerPilot what it has found.
-- 7. PagerPilot answers aloud and highlights the suspect file/lines on the dashboard.
+- 6. A participant asks Sprynt what it has found.
+- 7. Sprynt answers aloud and highlights the suspect file/lines on the dashboard.
 - 8. Dashboard shows the linked GitHub evidence and current incident state.
 
 ---
@@ -469,4 +469,4 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 
 | Build-ready summary |
 |---|
-| PagerPilot is a responsive web application backed by FastAPI, Supabase Auth/Postgres, and AWS S3. A Playwright bot joins an incident meeting, streams audio to the backend, and uses STT plus LLM reasoning to transcribe discussion, extract and reassign tasks, update Jira, investigate the connected GitHub repo, and answer spoken questions through ElevenLabs. The desktop dashboard exposes the full incident room and deep dive workspace, while mobile provides launch and monitoring capabilities. |
+| Sprynt is a responsive web application backed by FastAPI, Supabase Auth/Postgres, and AWS S3. A Playwright bot joins an incident meeting, streams audio to the backend, and uses STT plus LLM reasoning to transcribe discussion, extract and reassign tasks, update Jira, investigate the connected GitHub repo, and answer spoken questions through ElevenLabs. The desktop dashboard exposes the full incident room and deep dive workspace, while mobile provides launch and monitoring capabilities. |
