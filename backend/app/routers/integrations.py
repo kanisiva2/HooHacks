@@ -20,8 +20,8 @@ from app.config import settings
 from app.deps import get_current_user_id, get_db
 from app.models.integration import Integration
 from app.models.workspace import WorkspaceMember
-from app.services.github import get_user_repos
-from app.services.jira import get_jira_projects
+from app.services.github import get_user_repos, get_valid_github_token
+from app.services.jira import get_jira_projects, get_valid_jira_token
 
 logger = logging.getLogger(__name__)
 
@@ -415,9 +415,9 @@ async def github_repos(
 ):
     """List GitHub repos accessible to the connected account."""
     workspace_id = await _get_user_workspace_id(user_id, db)
-    integration = await _get_integration(db, workspace_id, "github")
+    token = await get_valid_github_token(db, workspace_id)
     try:
-        repos = await get_user_repos(integration.access_token)
+        repos = await get_user_repos(token)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 401:
             raise HTTPException(status_code=401, detail="GitHub token is invalid or revoked")
@@ -432,15 +432,9 @@ async def jira_projects_list(
 ):
     """List Jira projects accessible to the connected account."""
     workspace_id = await _get_user_workspace_id(user_id, db)
-    integration = await _get_integration(db, workspace_id, "jira")
-    cloud_id = (integration.metadata_json or {}).get("cloud_id")
-    if not cloud_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Jira integration is missing cloud_id",
-        )
+    token, cloud_id = await get_valid_jira_token(db, workspace_id)
     try:
-        projects = await get_jira_projects(integration.access_token, cloud_id)
+        projects = await get_jira_projects(token, cloud_id)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 401:
             raise HTTPException(status_code=401, detail="Jira token is invalid or expired")
