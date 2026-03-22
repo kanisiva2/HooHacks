@@ -1,6 +1,6 @@
 export type Severity = "P1" | "P2" | "P3" | "P4";
 export type IncidentStatus = "active" | "resolved" | "closed";
-export type TaskStatus = "proposed" | "active" | "synced" | "reassigned";
+export type TaskStatus = "proposed" | "synced" | "dismissed" | "closed";
 export type AgentState =
   | "idle"
   | "joining"

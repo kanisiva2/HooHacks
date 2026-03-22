@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import workspaces, incidents, integrations, tasks, deep_dive, artifacts, ws
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
 app = FastAPI(
     title="Sprynt API",

@@ -178,12 +178,16 @@ async def identify_suspect_lines(
     )
     try:
         raw = await _call_llm(system, user, max_tokens=1024)
+        stripped = raw.strip().lower() if raw else ""
+        if not stripped or stripped == "null" or stripped == "none":
+            logger.info("identify_suspect_lines: LLM returned no suspect range")
+            return None
         result = _parse_json_response(raw)
         if isinstance(result, dict) and "start" in result:
             return result
         return None
     except Exception:
-        logger.exception("identify_suspect_lines failed")
+        logger.exception("identify_suspect_lines failed (raw response: %s)", raw[:200] if raw else "<empty>")
         return None
 
 

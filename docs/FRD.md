@@ -159,7 +159,7 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 
 # 11. External Integration Strategy
 - **GitHub:** Must-have. Used to authenticate to repositories, enumerate file trees, read files, inspect recent commits and diffs, and support evidence-backed code highlighting.
-- **Jira:** Must-have. Used to create and update tickets/tasks in real time as assignments stabilize during the call.
+- **Jira:** Must-have. Used to create and update tickets/tasks when the user approves proposed tasks from the dashboard during the call.
 - **Slack:** Optional. Good for future push notifications or incident summaries, but not required for MVP.
 - **Notion:** Optional. Useful for documentation and polished product breadth, but lower priority than GitHub and Jira.
 
@@ -206,10 +206,10 @@ Structured product data belongs in Supabase Postgres. Large binary and export ar
 
 ## 13.5 Task sync and ownership changes
 - **Step 1:** Conversation produces a proposed task, such as "John investigate auth middleware."
-- **Step 2:** The task appears instantly in the UI as a structured action item.
-- **Step 3:** A short stabilization delay prevents duplicate or noisy task creation.
-- **Step 4:** Once stable, Jira issue creation or update is triggered.
-- **Step 5:** If ownership changes verbally, Sprynt updates the same task rather than creating a second task.
+- **Step 2:** The task appears instantly in the UI as a structured action item in the "Proposed" column.
+- **Step 3:** The user reviews the proposed task and clicks "Approve" to sync it to Jira, or "Dismiss" to remove it. No automatic promotion occurs — this prevents noisy auto-creation of Jira tickets.
+- **Step 4:** On approval, Jira issue creation is triggered immediately. The task moves to the "Synced" column with a link to the Jira ticket.
+- **Step 5:** If ownership changes verbally (e.g., "Jane take that task"), Sprynt updates the owner and moves the task back to "Proposed" for re-approval, rather than creating a second task.
 
 ## 13.6 Post-incident artifacts
 - **Step 1:** Transcript export and report summary are saved to S3. Meeting audio recording is retrieved from Skribby's `recording_url` and archived to S3.
@@ -297,14 +297,15 @@ This subsystem is critical. Sprynt must create tasks during the meeting, but not
 
 | State | Meaning | Transition trigger |
 |---|---|---|
-| Proposed | Task language detected but not yet stable | New assignment phrase detected |
-| Active | Task stabilized and shown in UI as current work item | Short delay plus explicit owner/task confidence |
-| Synced | Task has been created or updated in Jira | Successful integration call |
-| Reassigned | Owner or wording changed while preserving same task identity | Semantic reassignment detected in later transcript |
+| Proposed | Task language detected and shown in UI for review | New assignment phrase detected by LLM |
+| Synced | Task approved by user and created/updated in Jira | User clicks "Approve" on the dashboard |
+| Dismissed | Task rejected by user — not synced to Jira | User clicks "Dismiss" on the dashboard |
 | Closed | Task marked done or incident resolved | User/system close action |
 
+Note: verbal reassignment (e.g., "Jane take that task") updates the owner and moves the task back to "Proposed" for re-approval.
+
 ### Design rule
-UI updates instantly. Jira updates after a brief stabilization window. This preserves the live operational feel without creating duplicate tickets from noisy early discussion.
+UI updates instantly. Jira sync happens only when the user explicitly approves a task. This preserves the live operational feel while giving the user full control over what gets synced to Jira, preventing noisy auto-creation of tickets from early discussion.
 
 ---
 
@@ -432,7 +433,7 @@ The live code highlight panel belongs on the dashboard, primarily within the Dee
 - **Phase 2 - Core data:** Create Postgres schema, S3 artifact wiring, and backend API contracts.
 - **Phase 3 - Meeting bot:** Integrate Skribby API for bot creation, connect to Skribby real-time WebSocket for transcript streaming.
 - **Phase 4 - STT and live transcript:** Wire Skribby WebSocket transcript events through the backend to the dashboard UI.
-- **Phase 5 - Task engine and Jira sync:** Implement task extraction, stabilization, live reassignment, and Jira updates.
+- **Phase 5 - Task engine and Jira sync:** Implement task extraction, user-approved Jira sync, live reassignment detection, and approval/dismiss flow.
 - **Phase 6 - Deep Dive:** Connect GitHub, search repo, rank suspects, and display code highlight panel.
 - **Phase 7 - Voice interaction:** Support direct Q&A via meeting chat (Skribby chat-message action) and dashboard text. ElevenLabs audio synthesis is stretch.
 - **Phase 8 - Polish:** Improve mobile responsiveness, incident history, and final demo choreography.

@@ -380,9 +380,11 @@ Create `components/incident/TranscriptFeed.tsx`:
 **Step 8 — TaskBoard component** (ref: Technical Spec §2)
 
 Create `components/incident/TaskBoard.tsx`:
-- Three columns: **Proposed** (yellow), **Active** (blue), **Synced** (green).
+- Two columns: **Proposed** (yellow) and **Synced** (green). The Active column has been removed — tasks move directly from Proposed to Synced on user approval.
 - Each card shows: `normalized_task`, `owner`, `priority` badge, `confidence` badge.
+- Proposed cards show an **Approve** button (triggers Jira sync and moves to Synced) and a **Dismiss** button (removes the task from the board).
 - Synced cards show Jira issue key as a link.
+- Dismissed tasks are filtered out of the board.
 - Uses `actionItems` from Zustand store, filtered by status.
 
 **Step 9 — AgentStatusBadge** (ref: Technical Spec §2)
@@ -450,18 +452,21 @@ Create `app/settings/page.tsx`:
 
 **Step 1 — Task state machine** (ref: Technical Spec §9.1, §9.2)
 
-Create `app/services/task_machine.py` exactly as specified in §9.2. This is a critical subsystem. Key implementation details:
+Create `app/services/task_machine.py`. This is a critical subsystem. Key implementation details:
 
 - `process_transcript_chunk(incident_id, speaker, text, db, jira_access_token, jira_cloud_id, jira_project_key)`:
-  1. First checks for **reassignments** — queries active/synced tasks, calls `detect_reassignment()` from E3's LLM service. If found, updates the task status to `"reassigned"` and re-syncs to Jira.
-  2. Then checks for **new task proposals** — calls `extract_tasks_from_chunk()`. For each extracted task, creates an `ActionItem` with status `"proposed"` and starts a stabilization timer.
-  3. The stabilization timer (`_stabilize_and_sync`) waits 15 seconds. If the task is still `"proposed"` (no contradiction or reassignment occurred), it transitions to `"active"` and then syncs to Jira.
+  1. First checks for **reassignments** — queries active/synced/proposed tasks, calls `detect_reassignment()` from E3's LLM service. If found, updates the task owner and sets status back to `"proposed"` so the user can re-approve.
+  2. Then checks for **new task proposals** — calls `extract_tasks_from_chunk()`. For each extracted task, creates an `ActionItem` with status `"proposed"`. Tasks remain in `"proposed"` until the user explicitly approves them from the dashboard.
 
-- In-memory `_pending_timers` dict tracks `task_id → asyncio.Task`. On reassignment, cancel the existing timer before creating a new one.
+- **No automatic promotion or stabilization timer.** Tasks do not auto-advance. The user must click "Approve" on the dashboard to trigger Jira sync. This prevents noisy auto-creation of Jira tickets.
 
-- `_sync_to_jira(task, ...)` — calls `create_jira_issue()` or `update_jira_assignee()` from E3's Jira service. Sets `jira_issue_key` and transitions to `"synced"`. On failure, reverts to `"active"` for retry.
+- `_sync_to_jira(task, ...)` — calls `create_jira_issue()` or `update_jira_assignee()` from E3's Jira service. Sets `jira_issue_key` and transitions to `"synced"`. On failure, reverts to `"proposed"` for retry. Called from the `/approve` endpoint in `tasks.py`.
 
 - `_push_task_update(incident_id, task)` — broadcasts the task state to the dashboard WebSocket.
+
+- **Approval and dismissal** are handled via dedicated endpoints in `app/routers/tasks.py`:
+  - `POST /api/incidents/{id}/tasks/{task_id}/approve` — moves task from `proposed` to `synced`, triggers Jira sync immediately.
+  - `POST /api/incidents/{id}/tasks/{task_id}/dismiss` — sets task status to `dismissed`, no Jira sync.
 
 **Step 2 — Deep dive agent** (ref: Technical Spec §10.1)
 
@@ -503,7 +508,7 @@ Flesh out `app/services/transcript_parser.py`:
 1. Create an incident via the UI modal → see it listed → navigate to incident room.
 2. WebSocket connects when entering the incident room.
 3. Manually insert a transcript chunk via the backend (or test endpoint) → see it appear in the TranscriptFeed.
-4. Manually trigger task extraction → see a task appear in the TaskBoard as "proposed" → watch it transition to "active" after 15 seconds.
+4. Manually trigger task extraction → see a task appear in the TaskBoard as "proposed" → click "Approve" to sync it to Jira and see it move to the "Synced" column.
 5. GitHub and Jira OAuth flows complete end-to-end (tokens stored in DB).
 6. Manually trigger deep dive → see suspect files appear in the incident room.
 7. Skribby service can create a bot and the listener receives transcript events from the WebSocket (test with a real short meeting).
@@ -658,7 +663,7 @@ GitHub OAuth tokens don't expire but can be revoked. Add error handling:
 
 The task machine produces owner names from speech (e.g., "Sarah"). Implement name-to-Jira-account matching:
 - `get_jira_users(access_token, cloud_id, query)` — search Jira users by display name.
-- In the task machine's `_sync_to_jira`, attempt to match the spoken owner name to a Jira account ID. If no match, leave unassigned but include the spoken name in the description.
+- In the task machine's `_sync_to_jira` (called when the user clicks "Approve" on the dashboard), attempt to match the spoken owner name to a Jira account ID. If no match, leave unassigned but include the spoken name in the description.
 
 **Step 5 — Integration error handling**
 
@@ -707,7 +712,7 @@ Update `process_parsed_chunk()`:
 
 Implement automatic deep dive triggering in `process_parsed_chunk()`:
 - Track a counter of final transcript chunks per incident (in-memory dict).
-- After 20 final chunks (approximately 3+ minutes of conversation), automatically trigger `run_deep_dive()` if:
+- After 8 final chunks (approximately 30–40 seconds of conversation), automatically trigger `run_deep_dive()` if:
   - The incident's workspace has a GitHub integration.
   - No deep dive has been run yet for this incident.
 - Build the transcript summary from the last 30 chunks.
@@ -720,9 +725,9 @@ Implement automatic deep dive triggering in `process_parsed_chunk()`:
 **All engineers meet to verify:**
 1. Creating an incident with a meeting link creates a Skribby bot and the bot joins the meeting.
 2. Transcript chunks from Skribby's real-time WebSocket flow through the backend and appear in the TranscriptFeed UI.
-3. Tasks extracted from transcript appear in the task board, transition through states, and sync to Jira with proper ADF descriptions.
+3. Tasks extracted from transcript appear in the task board as "Proposed". User clicks "Approve" to sync to Jira with proper ADF descriptions. User clicks "Dismiss" to remove unwanted tasks.
 4. Addressing Sprynt by name triggers a response in the meeting chat (via Skribby chat-message action) and in the dashboard.
-5. Deep dive triggers automatically after sufficient transcript and results display in the Monaco code panel.
+5. Deep dive triggers automatically after ~8 transcript chunks and results display in the Monaco code panel.
 6. Resolving an incident stops the Skribby bot, downloads the recording, and exports artifacts to S3.
 7. Mobile layout works on a phone-sized viewport.
 8. Merge all branches to `main`.
@@ -749,7 +754,7 @@ Implement automatic deep dive triggering in `process_parsed_chunk()`:
 
 - Add error boundaries around each panel (transcript, tasks, deep dive) so one failure doesn't crash the entire incident room.
 - Add WebSocket reconnection logic in `useIncidentSocket` — exponential backoff with max 5 retries. Show a "Reconnecting..." banner when disconnected.
-- Add loading skeletons for all data-fetching states (incidents list, task board, deep dive results).
+- Add loading skeletons for all data-fetching states (incidents list, task board with Proposed/Synced columns, deep dive results).
 - Add empty states — "No incidents yet", "No tasks extracted", "Deep dive not started".
 - Add toast notifications for key events: task synced to Jira, deep dive complete, bot joined meeting, errors.
 - Test keyboard navigation and basic accessibility (focus management in modals, ARIA labels on badges).

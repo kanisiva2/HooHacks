@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Literal
 
 import httpx
@@ -278,6 +278,13 @@ async def create_incident(
             )
             incident.bot_session_id = bot_result["id"]
             await db.commit()
+            logger.info(
+                "Skribby bot created for incident %s: id=%s, ws_url=%s, status=%s",
+                incident.id,
+                bot_result.get("id"),
+                bot_result.get("websocket_url"),
+                bot_result.get("status"),
+            )
 
             await log_event(db, incident.id, "bot_joined", {"bot_id": bot_result["id"]})
 
@@ -350,7 +357,7 @@ async def update_incident(
         previous_status = incident.status  # capture before mutation for event payload
         incident.status = body.status
         if body.status in ("resolved", "closed") and incident.resolved_at is None:
-            incident.resolved_at = datetime.now(timezone.utc)
+            incident.resolved_at = datetime.utcnow()
         if body.status == "closed":
             # Cascade-close all open action items for this incident
             await db.execute(

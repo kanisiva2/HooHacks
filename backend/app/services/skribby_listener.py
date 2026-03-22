@@ -41,6 +41,10 @@ async def listen_to_skribby(
             },
         )
 
+    logger.info(
+        "listen_to_skribby STARTED: incident=%s, ws_url=%s, bot_id=%s",
+        incident_id, websocket_url, bot_id,
+    )
     await _send_status("joining", "Connecting to Skribby stream")
     register_skribby_url(incident_id, websocket_url)
 
@@ -49,7 +53,9 @@ async def listen_to_skribby(
     while attempt < max_attempts:
         attempt += 1
         try:
+            logger.info("Connecting to Skribby WS (attempt %d/%d): %s", attempt, max_attempts, websocket_url)
             async with websockets.connect(websocket_url) as ws:
+                logger.info("Skribby WS connected for incident %s", incident_id)
                 async for raw_message in ws:
                     try:
                         event = json.loads(raw_message)
@@ -58,30 +64,63 @@ async def listen_to_skribby(
                         continue
 
                     event_type = event.get("type") or event.get("event")
+                    logger.info("[SKRIBBY] incident=%s type=%s", incident_id, event_type)
 
-                    if event_type == "ping":
+                    if event_type in ("ping", "started-speaking", "stopped-speaking", "participant-tracked"):
+                        continue
+
+                    if event_type == "connected":
+                        # Initial connection event — contains transcript history
+                        transcripts = (event.get("data") or {}).get("transcripts", [])
+                        for seg in transcripts:
+                            text = seg.get("transcript", "")
+                            if not text:
+                                continue
+                            await process_parsed_chunk(
+                                incident_id=incident_id,
+                                speaker=seg.get("speaker_name") or f"Speaker {seg.get('speaker', '?')}",
+                                text=text,
+                                is_final=True,
+                                start_ts=seg.get("start"),
+                                end_ts=seg.get("end"),
+                                db=db,
+                            )
+                        logger.info("Replayed %d historic transcript segments", len(transcripts))
                         continue
 
                     if event_type == "start":
                         await _send_status("listening", "Bot joined meeting and is listening")
                         continue
 
-                    if event_type == "transcript":
+                    if event_type == "status-update":
                         data = event.get("data", {})
-                        speaker = data.get("speaker", "Unknown")
-                        text = data.get("text", "")
+                        new_status = data.get("new_status", "")
+                        logger.info("Bot status update: %s -> %s", data.get("old_status"), new_status)
+                        if new_status in ("finished", "not_admitted"):
+                            stop_reason = data.get("stop_reason", "unknown")
+                            unregister_skribby_url(incident_id)
+                            recording_url = await _fetch_recording_url(bot_id, incident_id)
+                            msg = f"Meeting ended ({stop_reason})"
+                            if recording_url:
+                                msg += " — recording available"
+                            await _send_status("idle", msg)
+                            return
+                        continue
+
+                    if event_type == "ts":
+                        data = event.get("data", {})
+                        text = data.get("transcript", "")
                         if not text:
                             continue
-
-                        is_final = bool(data.get("is_final", data.get("isFinal", False)))
-                        start_ts = data.get("start_ts") or data.get("startTs") or data.get("timestamp")
-                        end_ts = data.get("end_ts") or data.get("endTs") or data.get("timestamp")
+                        speaker = data.get("speaker_name") or f"Speaker {data.get('speaker', '?')}"
+                        start_ts = data.get("start")
+                        end_ts = data.get("end")
 
                         await process_parsed_chunk(
                             incident_id=incident_id,
                             speaker=speaker,
                             text=text,
-                            is_final=is_final,
+                            is_final=True,
                             start_ts=start_ts,
                             end_ts=end_ts,
                             db=db,
@@ -93,7 +132,7 @@ async def listen_to_skribby(
                         recording_url = await _fetch_recording_url(bot_id, incident_id)
                         msg = "Meeting ended"
                         if recording_url:
-                            msg = f"Meeting ended — recording available"
+                            msg += " — recording available"
                         await _send_status("idle", msg)
                         return
 
@@ -102,6 +141,8 @@ async def listen_to_skribby(
                         logger.error("Skribby stream error: %s", message, extra={"incident_id": incident_id})
                         await _send_status("error", message)
                         continue
+
+                    logger.debug("Unhandled Skribby event type: %s", event_type)
 
             # Socket ended without explicit stop: retry.
             if attempt < max_attempts:

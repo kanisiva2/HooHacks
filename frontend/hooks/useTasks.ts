@@ -13,6 +13,11 @@ type TaskUpdateInput = {
   status?: ActionItem["status"];
 };
 
+type TaskActionInput = {
+  incidentId: string;
+  taskId: string;
+};
+
 export function useTasks(incidentId: string | undefined) {
   return useQuery({
     queryKey: ["tasks", incidentId],
@@ -69,6 +74,42 @@ export function useUpdateTask() {
         updated[index] = item;
         return updated;
       });
+      upsertActionItem(item);
+    },
+  });
+}
+
+export function useApproveTask() {
+  const queryClient = useQueryClient();
+  const upsertActionItem = useIncidentStore((state) => state.upsertActionItem);
+
+  return useMutation({
+    mutationFn: async ({ incidentId, taskId }: TaskActionInput) => {
+      const { data } = await api.post<ActionItem>(
+        `/api/incidents/${incidentId}/tasks/${taskId}/approve`,
+      );
+      return data;
+    },
+    onSuccess: (item) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", item.incident_id] });
+      upsertActionItem(item);
+    },
+  });
+}
+
+export function useDismissTask() {
+  const queryClient = useQueryClient();
+  const upsertActionItem = useIncidentStore((state) => state.upsertActionItem);
+
+  return useMutation({
+    mutationFn: async ({ incidentId, taskId }: TaskActionInput) => {
+      const { data } = await api.post<ActionItem>(
+        `/api/incidents/${incidentId}/tasks/${taskId}/dismiss`,
+      );
+      return data;
+    },
+    onSuccess: (item) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", item.incident_id] });
       upsertActionItem(item);
     },
   });

@@ -33,7 +33,7 @@ WAKE_PHRASES = [
 # Track final-chunk counts per incident for auto deep-dive trigger.
 _final_chunk_counts: dict[str, int] = {}
 _deep_dive_triggered: set[str] = set()
-AUTO_DEEP_DIVE_THRESHOLD = 20
+AUTO_DEEP_DIVE_THRESHOLD = 8
 
 
 def is_direct_address(text: str) -> bool:

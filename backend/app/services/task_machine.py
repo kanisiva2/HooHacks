@@ -1,15 +1,13 @@
 """
-Task state machine — extracts tasks from transcript, manages stabilization
-timers, and syncs to Jira.
+Task state machine — extracts tasks from transcript and manages task lifecycle.
 
-States: proposed → active → synced  (with a reassigned branch that re-syncs).
-A 15-second stabilization window prevents noisy early discussion from creating
-duplicate Jira tickets.
+States: proposed → synced  (user must approve via the dashboard).
+Verbal reassignment moves a synced task back to proposed for re-approval.
+Dismissed tasks are hidden from the board and never synced.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -26,10 +24,7 @@ from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 
-STABILIZATION_SECONDS = 15
-
-_pending_timers: dict[str, asyncio.Task[None]] = {}
-_task_source_text: dict[str, str] = {}  # task_id → transcript snippet that spawned it
+_task_source_text: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -60,13 +55,13 @@ async def _push_task_update(incident_id: str, task: ActionItem) -> None:
 # Active task helpers
 # ---------------------------------------------------------------------------
 
-async def _get_active_tasks(
+async def _get_existing_tasks(
     db: AsyncSession, incident_id: str,
 ) -> list[ActionItem]:
     result = await db.execute(
         select(ActionItem).where(
             ActionItem.incident_id == uuid.UUID(incident_id),
-            ActionItem.status.in_(["active", "synced", "proposed", "reassigned"]),
+            ActionItem.status.in_(["proposed", "synced"]),
         )
     )
     return list(result.scalars().all())
@@ -87,12 +82,12 @@ def _tasks_as_summary(tasks: list[ActionItem]) -> list[dict[str, Any]]:
 async def get_active_tasks_summary(
     db: AsyncSession, incident_id: str,
 ) -> list[dict[str, Any]]:
-    tasks = await _get_active_tasks(db, incident_id)
+    tasks = await _get_existing_tasks(db, incident_id)
     return _tasks_as_summary(tasks)
 
 
 # ---------------------------------------------------------------------------
-# Jira sync
+# Jira sync — called from the /approve endpoint
 # ---------------------------------------------------------------------------
 
 async def _resolve_jira_assignee(
@@ -117,14 +112,14 @@ async def _resolve_jira_assignee(
     return None
 
 
-async def _sync_to_jira(
+async def sync_task_to_jira(
     task_id: str,
     incident_id: str,
     jira_access_token: str,
     jira_cloud_id: str,
     jira_project_key: str,
 ) -> None:
-    """Create or update a Jira issue for the task. On failure, revert to active."""
+    """Sync a single task to Jira. Called when the user approves a task."""
     async with async_session_maker() as db:
         result = await db.execute(
             select(ActionItem).where(ActionItem.id == uuid.UUID(task_id))
@@ -170,8 +165,8 @@ async def _sync_to_jira(
                     task_id, task.jira_issue_key,
                 )
         except Exception:
-            logger.exception("Jira sync failed for task %s; reverting to active", task_id)
-            task.status = "active"
+            logger.exception("Jira sync failed for task %s; keeping as proposed", task_id)
+            task.status = "proposed"
             await db.commit()
 
         await _push_task_update(incident_id, task)
@@ -182,12 +177,7 @@ async def _update_jira_issue(
     jira_access_token: str,
     jira_cloud_id: str,
 ) -> None:
-    """Best-effort Jira assignee update for reassigned tasks.
-
-    Attempts to match the spoken owner name to a Jira account ID via user
-    search.  If no match is found the ticket is left with its current
-    assignee — full name-to-ID matching is refined in Sprint 3 (E3).
-    """
+    """Best-effort Jira assignee update for reassigned tasks."""
     if not task.owner or not task.jira_issue_key:
         return
 
@@ -214,53 +204,6 @@ async def _update_jira_issue(
 
 
 # ---------------------------------------------------------------------------
-# Stabilization timer
-# ---------------------------------------------------------------------------
-
-async def _stabilize_and_sync(
-    task_id: str,
-    incident_id: str,
-    jira_access_token: str | None,
-    jira_cloud_id: str | None,
-    jira_project_key: str | None,
-) -> None:
-    """Wait for the stabilization window, then promote and sync.
-
-    Handles both new tasks (proposed → active → synced) and reassigned tasks
-    (reassigned → active → synced via Jira update).
-    """
-    try:
-        await asyncio.sleep(STABILIZATION_SECONDS)
-    except asyncio.CancelledError:
-        _pending_timers.pop(task_id, None)
-        _task_source_text.pop(task_id, None)
-        return
-
-    _pending_timers.pop(task_id, None)
-
-    async with async_session_maker() as db:
-        result = await db.execute(
-            select(ActionItem).where(ActionItem.id == uuid.UUID(task_id))
-        )
-        task = result.scalar_one_or_none()
-        if task is None:
-            return
-
-        if task.status not in ("proposed", "reassigned"):
-            return
-
-        task.status = "active"
-        await db.commit()
-        await _push_task_update(incident_id, task)
-
-    if jira_access_token and jira_cloud_id and jira_project_key:
-        await _sync_to_jira(
-            task_id, incident_id,
-            jira_access_token, jira_cloud_id, jira_project_key,
-        )
-
-
-# ---------------------------------------------------------------------------
 # Main entry point — called from transcript_parser
 # ---------------------------------------------------------------------------
 
@@ -276,19 +219,16 @@ async def process_transcript_chunk(
     """Process a final transcript chunk through the task state machine.
 
     1. Check for reassignments of existing tasks.
-    2. Extract new task proposals and start stabilization timers.
+    2. Extract new task proposals (stay in proposed until user approves).
     """
     # ── 1. Reassignment detection ──
-    active_tasks = await _get_active_tasks(db, incident_id)
-    if active_tasks:
+    existing_tasks = await _get_existing_tasks(db, incident_id)
+    if existing_tasks:
         reassignment = await detect_reassignment(
-            text, _tasks_as_summary(active_tasks),
+            text, _tasks_as_summary(existing_tasks),
         )
         if reassignment:
-            await _handle_reassignment(
-                reassignment, incident_id, db,
-                jira_access_token, jira_cloud_id, jira_project_key,
-            )
+            await _handle_reassignment(reassignment, incident_id, db)
 
     # ── 2. New task extraction ──
     proposals = await extract_tasks_from_chunk(text, speaker)
@@ -313,15 +253,6 @@ async def process_transcript_chunk(
         _task_source_text[task_id_str] = text
 
         await _push_task_update(incident_id, task)
-
-        timer = asyncio.create_task(
-            _stabilize_and_sync(
-                task_id_str, incident_id,
-                jira_access_token, jira_cloud_id, jira_project_key,
-            )
-        )
-        _pending_timers[task_id_str] = timer
-
         logger.info("Proposed task %s: %s", task_id_str, task_text)
 
 
@@ -333,17 +264,9 @@ async def _handle_reassignment(
     reassignment: dict[str, str],
     incident_id: str,
     db: AsyncSession,
-    jira_access_token: str | None,
-    jira_cloud_id: str | None,
-    jira_project_key: str | None,
 ) -> None:
     task_id = reassignment.get("task_id", "")
     new_owner = reassignment.get("new_owner", "")
-
-    # Cancel any pending stabilization timer BEFORE creating a new one (Rule §9).
-    existing_timer = _pending_timers.pop(task_id, None)
-    if existing_timer is not None:
-        existing_timer.cancel()
 
     result = await db.execute(
         select(ActionItem).where(ActionItem.id == uuid.UUID(task_id))
@@ -355,23 +278,12 @@ async def _handle_reassignment(
 
     previous_owner = task.owner
     task.owner = new_owner
-    task.status = "reassigned"
+    task.status = "proposed"
     await db.commit()
 
     logger.info(
-        "Task %s reassigned: %s → %s",
+        "Task %s reassigned: %s → %s (moved back to proposed)",
         task_id, previous_owner, new_owner,
     )
 
     await _push_task_update(incident_id, task)
-
-    # Re-sync to Jira: start a new stabilization timer for the reassigned task
-    # so the Jira ticket gets updated after the dust settles.
-    if jira_access_token and jira_cloud_id and jira_project_key:
-        timer = asyncio.create_task(
-            _stabilize_and_sync(
-                task_id, incident_id,
-                jira_access_token, jira_cloud_id, jira_project_key,
-            )
-        )
-        _pending_timers[task_id] = timer

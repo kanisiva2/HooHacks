@@ -7,7 +7,7 @@ import httpx
 from app.config import settings
 
 SKRIBBY_BASE_URL = "https://platform.skribby.io/api/v1"
-DEFAULT_TRANSCRIPTION_MODEL = "deepgram-nova3-realtime"
+DEFAULT_TRANSCRIPTION_MODEL = "deepgram-realtime-v3"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
@@ -47,6 +47,11 @@ async def create_bot(
 
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as client:
         response = await client.post(f"{SKRIBBY_BASE_URL}/bot", headers=_headers(), json=payload)
+        if response.status_code >= 400:
+            import logging
+            logging.getLogger(__name__).error(
+                "Skribby create_bot returned %s: %s", response.status_code, response.text,
+            )
         response.raise_for_status()
         return response.json()
 
