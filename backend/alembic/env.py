@@ -26,6 +26,7 @@ target_metadata = Base.metadata
 
 # CRITICAL: Use the direct Supabase connection (port 5432) for migrations.
 # The pooler (port 6543) uses transaction-mode pooling which breaks DDL statements.
+config.set_main_option("sqlalchemy.url", settings.database_direct_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
