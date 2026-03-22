@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 STABILIZATION_SECONDS = 15
 
 _pending_timers: dict[str, asyncio.Task[None]] = {}
+_task_source_text: dict[str, str] = {}  # task_id → transcript snippet that spawned it
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +95,28 @@ async def get_active_tasks_summary(
 # Jira sync
 # ---------------------------------------------------------------------------
 
+async def _resolve_jira_assignee(
+    owner_name: str | None,
+    jira_access_token: str,
+    jira_cloud_id: str,
+) -> str | None:
+    """Best-effort match of a spoken owner name to a Jira account ID."""
+    if not owner_name:
+        return None
+    try:
+        users = await get_jira_users(jira_access_token, jira_cloud_id, owner_name)
+        if users:
+            logger.info(
+                "Matched spoken owner '%s' → Jira user %s (%s)",
+                owner_name, users[0]["displayName"], users[0]["accountId"],
+            )
+            return users[0]["accountId"]
+        logger.info("No Jira user match for spoken owner '%s'", owner_name)
+    except Exception:
+        logger.exception("Jira user search failed for '%s'", owner_name)
+    return None
+
+
 async def _sync_to_jira(
     task_id: str,
     incident_id: str,
@@ -112,30 +135,35 @@ async def _sync_to_jira(
 
         try:
             if task.jira_issue_key:
-                # Task was previously synced — update the existing Jira issue.
                 await _update_jira_issue(
                     task, jira_access_token, jira_cloud_id,
                 )
                 task.status = "synced"
-                task.synced_at = datetime.now(timezone.utc)
+                task.synced_at = datetime.utcnow()
                 await db.commit()
                 logger.info(
                     "Task re-synced to Jira (update): %s → %s",
                     task_id, task.jira_issue_key,
                 )
             else:
-                # New task — create a Jira issue.
+                assignee_id = await _resolve_jira_assignee(
+                    task.owner, jira_access_token, jira_cloud_id,
+                )
+
+                description = f"Owner (from call): {task.owner or 'Unassigned'}"
                 jira_result = await create_jira_issue(
                     access_token=jira_access_token,
                     cloud_id=jira_cloud_id,
                     project_key=jira_project_key,
                     summary=task.normalized_task,
-                    description=f"Owner (from call): {task.owner or 'Unassigned'}",
+                    description=description,
                     priority="High" if task.priority in ("P1", "P2") else "Medium",
+                    assignee_account_id=assignee_id,
+                    source_transcript=_task_source_text.pop(task_id, None),
                 )
                 task.jira_issue_key = jira_result.get("key")
                 task.status = "synced"
-                task.synced_at = datetime.now(timezone.utc)
+                task.synced_at = datetime.utcnow()
                 await db.commit()
                 logger.info(
                     "Task synced to Jira (create): %s → %s",
@@ -205,6 +233,7 @@ async def _stabilize_and_sync(
         await asyncio.sleep(STABILIZATION_SECONDS)
     except asyncio.CancelledError:
         _pending_timers.pop(task_id, None)
+        _task_source_text.pop(task_id, None)
         return
 
     _pending_timers.pop(task_id, None)
@@ -280,17 +309,20 @@ async def process_transcript_chunk(
         await db.flush()
         await db.commit()
 
+        task_id_str = str(task.id)
+        _task_source_text[task_id_str] = text
+
         await _push_task_update(incident_id, task)
 
         timer = asyncio.create_task(
             _stabilize_and_sync(
-                str(task.id), incident_id,
+                task_id_str, incident_id,
                 jira_access_token, jira_cloud_id, jira_project_key,
             )
         )
-        _pending_timers[str(task.id)] = timer
+        _pending_timers[task_id_str] = timer
 
-        logger.info("Proposed task %s: %s", task.id, task_text)
+        logger.info("Proposed task %s: %s", task_id_str, task_text)
 
 
 # ---------------------------------------------------------------------------

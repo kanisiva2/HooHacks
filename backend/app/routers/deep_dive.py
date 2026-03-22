@@ -13,7 +13,7 @@ from app.models.integration import Integration
 from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
 from app.schemas.deep_dive import DeepDiveResultOut
-from app.services.github import get_file_content
+from app.services.github import get_file_content, get_valid_github_token
 
 router = APIRouter()
 
@@ -94,6 +94,7 @@ async def trigger_deep_dive(
     await _assert_workspace_member(db, incident.workspace_id, user_id)
 
     integration = await _get_github_integration(db, incident.workspace_id)
+    github_token = await get_valid_github_token(db, incident.workspace_id, integration)
 
     repo = (integration.metadata_json or {}).get("default_repo")
     if not repo:
@@ -125,7 +126,7 @@ async def trigger_deep_dive(
         asyncio.create_task(
             run_deep_dive(
                 incident_id=str(incident_id),
-                github_token=integration.access_token,
+                github_token=github_token,
                 repo_full_name=repo,
                 transcript_summary=transcript_summary,
             )
@@ -158,6 +159,7 @@ async def get_deep_dive_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deep dive result not found")
 
     integration = await _get_github_integration(db, incident.workspace_id)
+    github_token = await get_valid_github_token(db, incident.workspace_id, integration)
     repo = (integration.metadata_json or {}).get("default_repo")
     if not repo:
         raise HTTPException(
@@ -165,7 +167,7 @@ async def get_deep_dive_file(
             detail="No default repository set on GitHub integration",
         )
 
-    content = await get_file_content(integration.access_token, repo, dd_result.suspect_file)
+    content = await get_file_content(github_token, repo, dd_result.suspect_file)
 
     return {
         "file_path": dd_result.suspect_file,
