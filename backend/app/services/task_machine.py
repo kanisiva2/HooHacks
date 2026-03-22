@@ -31,8 +31,12 @@ _task_source_text: dict[str, str] = {}
 # WebSocket helpers
 # ---------------------------------------------------------------------------
 
-def _task_to_ws_payload(incident_id: str, task: ActionItem) -> dict[str, Any]:
-    return {
+def _task_to_ws_payload(
+    incident_id: str,
+    task: ActionItem,
+    sync_error: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "type": "action_item_update",
         "incident_id": incident_id,
         "id": str(task.id),
@@ -45,10 +49,17 @@ def _task_to_ws_payload(incident_id: str, task: ActionItem) -> dict[str, Any]:
         "proposed_at": task.proposed_at.isoformat() if task.proposed_at else None,
         "synced_at": task.synced_at.isoformat() if task.synced_at else None,
     }
+    if sync_error:
+        payload["sync_error"] = sync_error
+    return payload
 
 
-async def _push_task_update(incident_id: str, task: ActionItem) -> None:
-    await manager.send(incident_id, _task_to_ws_payload(incident_id, task))
+async def _push_task_update(
+    incident_id: str,
+    task: ActionItem,
+    sync_error: str | None = None,
+) -> None:
+    await manager.send(incident_id, _task_to_ws_payload(incident_id, task, sync_error))
 
 
 # ---------------------------------------------------------------------------
@@ -118,15 +129,19 @@ async def sync_task_to_jira(
     jira_access_token: str,
     jira_cloud_id: str,
     jira_project_key: str,
-) -> None:
-    """Sync a single task to Jira. Called when the user approves a task."""
+) -> str | None:
+    """Sync a single task to Jira. Called when the user approves a task.
+
+    Returns ``None`` on success, or a human-readable error string on failure.
+    """
+    sync_error: str | None = None
     async with async_session_maker() as db:
         result = await db.execute(
             select(ActionItem).where(ActionItem.id == uuid.UUID(task_id))
         )
         task = result.scalar_one_or_none()
         if task is None:
-            return
+            return "Task not found"
 
         try:
             if task.jira_issue_key:
@@ -164,12 +179,15 @@ async def sync_task_to_jira(
                     "Task synced to Jira (create): %s → %s",
                     task_id, task.jira_issue_key,
                 )
-        except Exception:
+        except Exception as exc:
+            sync_error = f"Jira sync failed: {exc}"
             logger.exception("Jira sync failed for task %s; keeping as proposed", task_id)
             task.status = "proposed"
             await db.commit()
 
-        await _push_task_update(incident_id, task)
+        await _push_task_update(incident_id, task, sync_error=sync_error)
+
+    return sync_error
 
 
 async def _update_jira_issue(

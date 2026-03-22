@@ -15,7 +15,7 @@ from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
 from app.services.event_logger import log_event
 from app.schemas.deep_dive import DeepDiveResultOut
-from app.services.github import get_file_content, get_valid_github_token
+from app.services.github import get_file_content, get_valid_github_token, github_rate_limit_ok, get_rate_limit_info
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,14 @@ async def trigger_deep_dive(
     """
     incident = await _get_incident_or_404(db, incident_id)
     await _assert_workspace_member(db, incident.workspace_id, user_id)
+
+    if not github_rate_limit_ok():
+        info = get_rate_limit_info()
+        reset_mins = round((info["reset_in_seconds"] or 0) / 60, 1)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"GitHub rate limit low ({info['remaining']} remaining). Try again in ~{reset_mins} minutes.",
+        )
 
     integration = await _get_github_integration(db, incident.workspace_id)
     github_token = await get_valid_github_token(db, incident.workspace_id, integration)

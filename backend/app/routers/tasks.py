@@ -105,14 +105,18 @@ async def update_task(
     return ActionItemOut.model_validate(task)
 
 
-@router.post("/incidents/{incident_id}/tasks/{task_id}/approve", response_model=ActionItemOut)
+@router.post("/incidents/{incident_id}/tasks/{task_id}/approve")
 async def approve_task(
     incident_id: uuid.UUID,
     task_id: uuid.UUID,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> ActionItemOut:
-    """Approve a proposed task — syncs it to Jira immediately."""
+) -> dict:
+    """Approve a proposed task — syncs it to Jira immediately.
+
+    Returns the task plus an optional ``sync_error`` field when Jira sync fails
+    (task stays as proposed so the user can retry).
+    """
     incident = await _get_incident_or_404(db, incident_id)
     await _assert_workspace_member(db, incident.workspace_id, user_id)
     task = await _get_task_or_404(db, incident_id, task_id)
@@ -122,6 +126,8 @@ async def approve_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot approve task in '{task.status}' status",
         )
+
+    sync_error: str | None = None
 
     # Fetch Jira integration for the workspace
     result = await db.execute(
@@ -138,16 +144,18 @@ async def approve_task(
         project_key = meta.get("default_project_key")
 
         if cloud_id and project_key:
-            await sync_task_to_jira(
+            sync_error = await sync_task_to_jira(
                 task_id=str(task_id),
                 incident_id=str(incident_id),
                 jira_access_token=jira_integration.access_token,
                 jira_cloud_id=cloud_id,
                 jira_project_key=project_key,
             )
-            # Re-fetch the task since sync_task_to_jira uses its own session
             await db.refresh(task)
-            return ActionItemOut.model_validate(task)
+            resp = ActionItemOut.model_validate(task).model_dump()
+            if sync_error:
+                resp["sync_error"] = sync_error
+            return resp
 
     # No Jira integration — just move to synced without a Jira ticket
     task.status = "synced"
@@ -155,7 +163,7 @@ async def approve_task(
     await db.commit()
     await _push_task_update(str(incident_id), task)
     logger.info("Task %s approved without Jira (no integration)", task_id)
-    return ActionItemOut.model_validate(task)
+    return ActionItemOut.model_validate(task).model_dump()
 
 
 @router.post("/incidents/{incident_id}/tasks/{task_id}/dismiss", response_model=ActionItemOut)
