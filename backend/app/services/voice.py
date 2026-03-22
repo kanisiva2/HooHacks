@@ -7,10 +7,13 @@ Provides:
 - send_chat_response() — delivers text to the meeting via Skribby chat-message.
 - handle_voice_question() — full Q&A pipeline: status transitions, LLM answer
   generation, chat-message delivery, and dashboard broadcast.
+- synthesize_and_broadcast() — ElevenLabs TTS → S3 → tts_audio WebSocket message.
+- announce_deep_dive_start/complete/task_proposal — proactive voice announcements.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -20,17 +23,111 @@ import websockets
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import async_session_maker
 from app.models.action_item import ActionItem
 from app.models.deep_dive import DeepDiveResult
 from app.models.incident import IncidentEvent
 from app.models.transcript import TranscriptChunk
 from app.services.llm import generate_spoken_answer
+from app.services.s3 import get_presigned_url, upload_bytes
 from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 
 _CHAT_WS_TIMEOUT = 10  # seconds
+
+# ---------------------------------------------------------------------------
+# ElevenLabs TTS — per-incident lock to avoid overlapping audio
+# ---------------------------------------------------------------------------
+
+_tts_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_tts_lock(incident_id: str) -> asyncio.Lock:
+    if incident_id not in _tts_locks:
+        _tts_locks[incident_id] = asyncio.Lock()
+    return _tts_locks[incident_id]
+
+
+def _sync_tts(text: str) -> bytes:
+    """Synchronous ElevenLabs call — runs in a thread-pool executor."""
+    from elevenlabs.client import ElevenLabs  # local import keeps startup fast
+
+    client = ElevenLabs(api_key=settings.elevenlabs_api_key)
+    gen = client.text_to_speech.convert(
+        text=text,
+        voice_id=settings.elevenlabs_voice_id,
+        model_id="eleven_turbo_v2",
+        output_format="mp3_44100_128",
+    )
+    return b"".join(gen)
+
+
+async def synthesize_and_broadcast(
+    incident_id: str,
+    text: str,
+    trigger: str,
+) -> bool:
+    """Synthesize *text* via ElevenLabs, upload to S3, send tts_audio WS message.
+
+    Returns True on success, False on any failure (graceful degradation).
+    Text delivery to Skribby chat / dashboard always happens before this is called,
+    so failures here are silent and non-fatal.
+    """
+    if not settings.elevenlabs_api_key:
+        return False
+    try:
+        async with _get_tts_lock(incident_id):
+            loop = asyncio.get_event_loop()
+            audio_bytes = await loop.run_in_executor(None, _sync_tts, text)
+            key = f"tts/{incident_id}/{uuid.uuid4()}.mp3"
+            await upload_bytes(key, audio_bytes, "audio/mpeg")
+            url = await get_presigned_url(key, expires_in=300)
+            await manager.send(incident_id, {
+                "type": "tts_audio",
+                "url": url,
+                "text": text,
+                "trigger": trigger,
+            })
+            return True
+    except Exception:
+        logger.exception("TTS synthesis failed for incident %s", incident_id)
+        return False
+
+
+async def announce_deep_dive_start(incident_id: str) -> None:
+    """Announce that the deep dive is starting."""
+    await synthesize_and_broadcast(
+        incident_id,
+        "I'm doing a deep dive into the codebase now.",
+        "deep_dive_start",
+    )
+
+
+async def announce_deep_dive_complete(incident_id: str, suspect_count: int) -> None:
+    """Announce deep dive completion with the number of suspect files found."""
+    noun = "file" if suspect_count == 1 else "files"
+    await synthesize_and_broadcast(
+        incident_id,
+        f"Deep dive complete. I found {suspect_count} suspect {noun}.",
+        "deep_dive_complete",
+    )
+
+
+async def announce_task_proposal(
+    incident_id: str,
+    task_text: str,
+    owner: str | None,
+) -> None:
+    """Announce a newly proposed Jira task."""
+    owner_part = f" for {owner}" if owner else ""
+    await synthesize_and_broadcast(
+        incident_id,
+        f"I'm flagging a task: {task_text}{owner_part}.",
+        "task_proposal",
+    )
+
 
 # ---------------------------------------------------------------------------
 # Skribby WebSocket URL registry
@@ -230,6 +327,9 @@ async def handle_voice_question(
             "last_message": answer,
             "timestamp": datetime.now(timezone.utc).timestamp(),
         })
+
+        # 5b. Synthesize and broadcast audio (non-fatal if ElevenLabs unavailable)
+        await synthesize_and_broadcast(incident_id, answer, trigger="voice_answer")
 
         # Log the answer event
         async with async_session_maker() as db:

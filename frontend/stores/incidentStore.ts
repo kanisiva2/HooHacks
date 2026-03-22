@@ -17,6 +17,7 @@ type IncidentStore = {
     timestamp: number;
   };
   connectionStatus: "connecting" | "connected" | "reconnecting" | "disconnected";
+  audioQueue: string[];
   setIncidentId: (incidentId: string | null) => void;
   addTranscriptLine: (line: Omit<TranscriptLine, "id"> & { id?: string }) => void;
   upsertActionItem: (item: ActionItem) => void;
@@ -25,6 +26,8 @@ type IncidentStore = {
   setConnectionStatus: (
     status: "connecting" | "connected" | "reconnecting" | "disconnected",
   ) => void;
+  enqueueAudio: (url: string) => void;
+  dequeueAudio: () => void;
   reset: () => void;
 };
 
@@ -39,6 +42,7 @@ const initialState = {
     timestamp: Date.now(),
   },
   connectionStatus: "connecting" as const,
+  audioQueue: [] as string[],
 };
 
 export const useIncidentStore = create<IncidentStore>((set) => ({
@@ -80,5 +84,7 @@ export const useIncidentStore = create<IncidentStore>((set) => ({
       },
     }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+  enqueueAudio: (url) => set((s) => ({ audioQueue: [...s.audioQueue, url] })),
+  dequeueAudio: () => set((s) => ({ audioQueue: s.audioQueue.slice(1) })),
   reset: () => set({ ...initialState }),
 }));

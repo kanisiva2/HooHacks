@@ -8,6 +8,7 @@ Dismissed tasks are hidden from the board and never synced.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -20,6 +21,7 @@ from app.database import async_session_maker
 from app.models.action_item import ActionItem
 from app.services.llm import detect_reassignment, extract_tasks_from_chunk
 from app.services.jira import create_jira_issue, update_jira_assignee, get_jira_users
+from app.services.voice import announce_task_proposal
 from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -271,6 +273,9 @@ async def process_transcript_chunk(
         _task_source_text[task_id_str] = text
 
         await _push_task_update(incident_id, task)
+        asyncio.create_task(
+            announce_task_proposal(incident_id, task_text, proposal.get("owner"))
+        )
         logger.info("Proposed task %s: %s", task_id_str, task_text)
 
 

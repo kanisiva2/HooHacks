@@ -7,6 +7,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AgentStatusBadge } from "@/components/incident/AgentStatusBadge";
 import { ReconnectionBanner } from "@/components/incident/ReconnectionBanner";
+import { VoiceActivityIndicator } from "@/components/incident/VoiceActivityIndicator";
 import { TaskBoard } from "@/components/incident/TaskBoard";
 import { TranscriptFeed } from "@/components/incident/TranscriptFeed";
 import { OnboardingGate } from "@/components/shared/OnboardingGate";
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useDeepDiveResults } from "@/hooks/useDeepDive";
 import { useIncident, useIncidents } from "@/hooks/useIncident";
 import { useIncidentSocket } from "@/hooks/useIncidentSocket";
@@ -46,6 +48,7 @@ export default function IncidentRoomPage() {
   const previousDeepDiveCountRef = useRef(0);
 
   useIncidentSocket(incidentId);
+  useAudioPlayer();
 
   useEffect(() => {
     if (!tasksQuery.data) {
@@ -112,6 +115,7 @@ export default function IncidentRoomPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <VoiceActivityIndicator />
                 <AgentStatusBadge />
                 <Button variant="outline" onClick={handleResolveIncident}>
                   Resolve Incident

@@ -130,8 +130,16 @@ export type AgentStatusMessage = {
   timestamp: number;
 };
 
+export type TtsAudioMessage = {
+  type: "tts_audio";
+  url: string;
+  text: string;
+  trigger: "deep_dive_start" | "deep_dive_complete" | "task_proposal" | "voice_answer";
+};
+
 export type IncidentSocketMessage =
   | TranscriptChunkMessage
   | ActionItemUpdateMessage
   | DeepDiveUpdateMessage
-  | AgentStatusMessage;
+  | AgentStatusMessage
+  | TtsAudioMessage;

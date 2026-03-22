@@ -53,6 +53,7 @@ export function useIncidentSocket(incidentId: string) {
   const setAgentStatus = useIncidentStore((state) => state.setAgentStatus);
   const setIncidentId = useIncidentStore((state) => state.setIncidentId);
   const setConnectionStatus = useIncidentStore((state) => state.setConnectionStatus);
+  const enqueueAudio = useIncidentStore((state) => state.enqueueAudio);
   const reset = useIncidentStore((state) => state.reset);
   const hasShownReconnectToast = useRef(false);
 
@@ -111,6 +112,9 @@ export function useIncidentSocket(incidentId: string) {
               break;
             case "agent_status":
               setAgentStatus(message.status, message.last_message);
+              break;
+            case "tts_audio":
+              enqueueAudio(message.url);
               break;
             default:
               break;
@@ -179,6 +183,7 @@ export function useIncidentSocket(incidentId: string) {
     setAgentStatus,
     setIncidentId,
     setConnectionStatus,
+    enqueueAudio,
     reset,
   ]);
 }

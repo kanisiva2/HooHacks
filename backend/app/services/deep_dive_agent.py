@@ -11,6 +11,7 @@ Deep dive agent — 6-step investigation pipeline.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -26,6 +27,7 @@ from app.services.github import (
     get_repo_tree,
 )
 from app.services.llm import identify_suspect_lines, rank_suspect_files
+from app.services.voice import announce_deep_dive_complete, announce_deep_dive_start
 from app.ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,7 @@ async def run_deep_dive(
     from the transcript parser after enough context accumulates.
     """
     await _send_agent_status(incident_id, "investigating", "Starting repository analysis")
+    asyncio.create_task(announce_deep_dive_start(incident_id))
 
     try:
         results = await _pipeline(
@@ -93,6 +96,7 @@ async def run_deep_dive(
         )
         status_msg = f"Found {len(results)} suspect file(s)"
         await _send_agent_status(incident_id, "listening", status_msg)
+        asyncio.create_task(announce_deep_dive_complete(incident_id, len(results)))
         return results
     except Exception:
         logger.exception("Deep dive pipeline failed", extra={"incident_id": incident_id})
