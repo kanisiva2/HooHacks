@@ -39,5 +39,8 @@ class Settings(BaseSettings):
     jira_client_secret: str
     jira_redirect_uri: str
 
+    # Frontend URL (for OAuth redirects back to the UI)
+    frontend_url: str = "http://localhost:3000"
+
 
 settings = Settings()
