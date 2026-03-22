@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ListChecks } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,61 +53,74 @@ export function TaskBoard({ incidentId, isLoading }: TaskBoardProps) {
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="font-medium">Task Board</h2>
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/70 bg-white/72 backdrop-blur-sm">
+      <div className="flex items-center gap-2 border-b border-slate-200/70 px-4 py-3">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50">
+          <ListChecks className="h-3.5 w-3.5 text-amber-500" />
+        </div>
+        <h2 className="text-sm font-semibold text-slate-900">Task Board</h2>
+        {visibleItems.length > 0 && (
+          <span className="ml-auto text-[10px] font-medium tabular-nums text-slate-400">
+            {visibleItems.length} task{visibleItems.length !== 1 ? "s" : ""}
+          </span>
+        )}
       </div>
       {!showSkeletons && visibleItems.length === 0 ? (
-        <div className="px-4 pt-3">
-          <p className="text-xs text-muted-foreground">No tasks extracted yet.</p>
+        <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
+            <ListChecks className="h-5 w-5 text-slate-400" />
+          </div>
+          <p className="mt-3 text-xs font-medium text-slate-600">No tasks extracted yet</p>
+          <p className="mt-1 text-[11px] text-slate-400">Action items from the call will appear here.</p>
         </div>
-      ) : null}
-      <div className="grid flex-1 gap-3 overflow-x-auto p-4 md:grid-cols-2">
-        {columns.map((column) => {
-          const items = visibleItems
-            .filter((item) => item.status === column.status)
-            .sort((a, b) => +new Date(a.proposed_at) - +new Date(b.proposed_at));
+      ) : (
+        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 md:grid-cols-2">
+          {columns.map((column) => {
+            const items = visibleItems
+              .filter((item) => item.status === column.status)
+              .sort((a, b) => +new Date(a.proposed_at) - +new Date(b.proposed_at));
 
-          return (
-            <section
-              key={column.status}
-              className="min-h-[260px] rounded-lg border bg-muted/30 p-3"
-            >
-              <header className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">{column.label}</h3>
-                <Badge variant="outline" aria-label={`${column.label} task count`}>
-                  {showSkeletons ? 0 : items.length}
-                </Badge>
-              </header>
-              <div className="space-y-2">
-                {showSkeletons ? (
-                  <>
-                    <TaskSkeleton />
-                    <TaskSkeleton />
-                  </>
-                ) : items.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No items yet.</p>
-                ) : (
-                  items.map((item) => (
-                    <TaskCard
-                      key={item.id}
-                      item={item}
-                      defaults={defaults.data}
-                      syncError={syncErrors[item.id] ?? item.sync_error}
-                      onApprove={() => handleApprove(item.id)}
-                      onDismiss={() =>
-                        dismissTask.mutate({ incidentId, taskId: item.id })
-                      }
-                      isApproving={approveTask.isPending}
-                      isDismissing={dismissTask.isPending}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+            return (
+              <section
+                key={column.status}
+                className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
+              >
+                <header className="mb-2 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-slate-700">{column.label}</h3>
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/80 px-1.5 text-[10px] font-bold tabular-nums text-slate-500">
+                    {showSkeletons ? 0 : items.length}
+                  </span>
+                </header>
+                <div className="flex-1 space-y-2 overflow-y-auto">
+                  {showSkeletons ? (
+                    <>
+                      <TaskSkeleton />
+                      <TaskSkeleton />
+                    </>
+                  ) : items.length === 0 ? (
+                    <p className="py-4 text-center text-[11px] text-slate-400">No items yet.</p>
+                  ) : (
+                    items.map((item) => (
+                      <TaskCard
+                        key={item.id}
+                        item={item}
+                        defaults={defaults.data}
+                        syncError={syncErrors[item.id] ?? item.sync_error}
+                        onApprove={() => handleApprove(item.id)}
+                        onDismiss={() =>
+                          dismissTask.mutate({ incidentId, taskId: item.id })
+                        }
+                        isApproving={approveTask.isPending}
+                        isDismissing={dismissTask.isPending}
+                      />
+                    ))
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -135,15 +149,15 @@ function TaskCard({
   isDismissing,
 }: TaskCardProps) {
   return (
-    <article className="space-y-2 rounded-md border bg-background p-3">
-      <p className="text-sm font-medium">{item.normalized_task}</p>
+    <article className="space-y-2 rounded-xl border border-slate-200/70 bg-white p-3 shadow-sm">
+      <p className="text-[13px] font-medium leading-snug text-slate-800">{item.normalized_task}</p>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" aria-label={`Owner ${item.owner ?? "Unassigned"}`}>
+        <Badge variant="outline" className="border-slate-200 text-[10px]" aria-label={`Owner ${item.owner ?? "Unassigned"}`}>
           {item.owner ?? "Unassigned"}
         </Badge>
         {item.priority ? (
           <Badge
-            className={statusToColorClass(item.priority)}
+            className={statusToColorClass(item.priority) + " text-[10px]"}
             variant="secondary"
             aria-label={`Priority ${item.priority}`}
           >
@@ -151,13 +165,13 @@ function TaskCard({
           </Badge>
         ) : null}
         {item.confidence !== null ? (
-          <Badge variant="secondary" aria-label={`Confidence ${confidenceToPercentage(item.confidence)}`}>
+          <Badge variant="secondary" className="text-[10px]" aria-label={`Confidence ${confidenceToPercentage(item.confidence)}`}>
             {confidenceToPercentage(item.confidence)}
           </Badge>
         ) : null}
       </div>
       {syncError && item.status === "proposed" && (
-        <div className="rounded bg-red-50 px-2 py-1 dark:bg-red-950/30">
+        <div className="rounded-lg bg-red-50 px-2 py-1.5 dark:bg-red-950/30">
           <Badge variant="destructive" className="text-[10px]">
             Sync failed
           </Badge>
@@ -166,19 +180,21 @@ function TaskCard({
           </p>
         </div>
       )}
-      {item.jira_issue_key && defaults?.jira_site_url ? (
-        <a
-          className="text-xs text-blue-600 hover:underline"
-          href={`${defaults.jira_site_url}/browse/${item.jira_issue_key}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {item.jira_issue_key}
-        </a>
-      ) : item.jira_issue_key ? (
-        <span className="text-xs text-muted-foreground">
-          {item.jira_issue_key}
-        </span>
+      {item.jira_issue_key ? (
+        defaults?.jira_site_url ? (
+          <a
+            className="text-xs font-medium text-blue-600 hover:underline"
+            href={`${defaults.jira_site_url}/browse/${item.jira_issue_key}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {item.jira_issue_key}
+          </a>
+        ) : (
+          <p className="text-xs font-medium text-blue-600">
+            {item.jira_issue_key}
+          </p>
+        )
       ) : null}
       {item.status === "proposed" && (
         <div className="flex gap-2">
@@ -187,6 +203,7 @@ function TaskCard({
             variant="default"
             disabled={isApproving || isDismissing}
             onClick={onApprove}
+            className="rounded-lg bg-slate-950 text-[11px] hover:bg-slate-800"
             aria-label={`Approve task ${item.normalized_task}`}
           >
             {syncError ? "Retry" : "Approve"}
@@ -196,6 +213,7 @@ function TaskCard({
             variant="ghost"
             disabled={isApproving || isDismissing}
             onClick={onDismiss}
+            className="rounded-lg text-[11px] text-slate-500"
             aria-label={`Dismiss task ${item.normalized_task}`}
           >
             Dismiss
@@ -208,7 +226,7 @@ function TaskCard({
 
 function TaskSkeleton() {
   return (
-    <div className="space-y-2 rounded-md border bg-background p-3">
+    <div className="space-y-2 rounded-xl border border-slate-200/70 bg-white p-3">
       <Skeleton className="h-4 w-4/5" />
       <div className="flex gap-2">
         <Skeleton className="h-5 w-20 rounded-full" />
