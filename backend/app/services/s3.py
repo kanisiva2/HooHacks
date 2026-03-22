@@ -8,22 +8,21 @@ import logging
 
 import aioboto3
 
-from app.config import get_settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def _session() -> aioboto3.Session:
-    settings = get_settings()
     return aioboto3.Session(
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_REGION,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+        region_name=settings.aws_region,
     )
 
 
 def _bucket() -> str:
-    return get_settings().S3_BUCKET_NAME
+    return settings.s3_bucket_name
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from typing import Any
 import anthropic
 import openai
 
-from app.config import get_settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +25,8 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL)
 
 async def _call_llm(system: str, user: str, max_tokens: int = 1024) -> str:
     """Route a single prompt to the configured LLM provider and return raw text."""
-    settings = get_settings()
-
-    if settings.LLM_PROVIDER == "anthropic":
-        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    if settings.llm_provider == "anthropic":
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         message = await client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=max_tokens,
@@ -37,7 +35,7 @@ async def _call_llm(system: str, user: str, max_tokens: int = 1024) -> str:
         )
         return message.content[0].text
 
-    client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model="gpt-4o",
         max_tokens=max_tokens,

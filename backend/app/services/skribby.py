@@ -1,25 +1,19 @@
 from __future__ import annotations
 
-import os
 from urllib.parse import urlparse
 
 import httpx
+
+from app.config import settings
 
 SKRIBBY_BASE_URL = "https://platform.skribby.io/api/v1"
 DEFAULT_TRANSCRIPTION_MODEL = "deepgram-nova3-realtime"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
-def _api_key() -> str:
-    key = os.getenv("SKRIBBY_API_KEY")
-    if not key:
-        raise ValueError("SKRIBBY_API_KEY is not set")
-    return key
-
-
 def _headers() -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {_api_key()}",
+        "Authorization": f"Bearer {settings.skribby_api_key}",
         "Content-Type": "application/json",
     }
 
