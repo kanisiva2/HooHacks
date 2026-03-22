@@ -108,11 +108,11 @@ async def trigger_deep_dive(
     integration = await _get_github_integration(db, incident.workspace_id)
     github_token = await get_valid_github_token(db, incident.workspace_id, integration)
 
-    repo = (integration.metadata_json or {}).get("default_repo")
+    repo = incident.repo_full_name or (integration.metadata_json or {}).get("default_repo")
     if not repo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No default repository set on GitHub integration",
+            detail="No repository configured for this incident",
         )
 
     # Build transcript summary from the last 20 final chunks
@@ -177,11 +177,11 @@ async def get_deep_dive_file(
 
     integration = await _get_github_integration(db, incident.workspace_id)
     github_token = await get_valid_github_token(db, incident.workspace_id, integration)
-    repo = (integration.metadata_json or {}).get("default_repo")
+    repo = incident.repo_full_name or (integration.metadata_json or {}).get("default_repo")
     if not repo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No default repository set on GitHub integration",
+            detail="No repository configured for this incident",
         )
 
     content = await get_file_content(github_token, repo, dd_result.suspect_file)

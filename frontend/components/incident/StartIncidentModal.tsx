@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { useGithubRepos } from "@/hooks/useIntegrations";
+import { useWorkspaceDefaults } from "@/hooks/useWorkspaceDefaults";
 import { api } from "@/lib/api";
 import type { Incident } from "@/types/api";
 
 const schema = z.object({
   title: z.string().min(2, "Title is required"),
   severity: z.enum(["P1", "P2", "P3", "P4"]),
-  meeting_link: z.union([z.literal(""), z.url("Meeting link must be a valid URL")]),
+  repo_full_name: z.string().min(1, "Repository is required"),
+  meeting_link: z.url("Meeting link must be a valid URL"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -29,16 +32,40 @@ type StartIncidentModalProps = {
 export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartIncidentModalProps) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [severity, setSeverity] = useState<FormValues["severity"]>("P2");
+  const githubRepos = useGithubRepos(open);
+  const defaults = useWorkspaceDefaults(open);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       title: "",
       severity: "P2",
+      repo_full_name: "",
       meeting_link: "",
     },
   });
+
+  const meetingLinkValue = useWatch({ control: form.control, name: "meeting_link" }) ?? "";
+  const titleValue = useWatch({ control: form.control, name: "title" }) ?? "";
+  const severityValue = useWatch({ control: form.control, name: "severity" }) ?? "P2";
+  const repoFullNameValue = useWatch({ control: form.control, name: "repo_full_name" }) ?? "";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const defaultRepo = defaults.data?.default_repo ?? "";
+    if (!defaultRepo) {
+      return;
+    }
+    if (form.getValues("repo_full_name")) {
+      return;
+    }
+    form.setValue("repo_full_name", defaultRepo, {
+      shouldValidate: true,
+      shouldDirty: false,
+    });
+  }, [defaults.data?.default_repo, form, open]);
 
   const onSubmit = async (values: FormValues) => {
     setSubmitError(null);
@@ -48,11 +75,10 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
         workspace_id: workspaceId,
         title: values.title,
         severity: values.severity,
-        meeting_link: values.meeting_link || null,
+        repo_full_name: values.repo_full_name,
+        meeting_link: values.meeting_link,
       });
       onOpenChange(false);
-      form.reset();
-      setSeverity("P2");
       router.push(`/incidents/${data.id}`);
     } catch (error) {
       console.error(error);
@@ -60,8 +86,27 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
     }
   };
 
+  const isStartDisabled =
+    form.formState.isSubmitting ||
+    !meetingLinkValue.trim() ||
+    !titleValue.trim() ||
+    !repoFullNameValue.trim();
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      form.reset({
+        title: "",
+        severity: "P2",
+        repo_full_name: "",
+        meeting_link: "",
+      });
+      setSubmitError(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Start Incident</DialogTitle>
@@ -84,13 +129,12 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Severity</label>
             <Select
-              value={severity}
+              value={severityValue}
               onValueChange={(value) => {
                 if (!value) {
                   return;
                 }
                 const nextSeverity = value as FormValues["severity"];
-                setSeverity(nextSeverity);
                 form.setValue("severity", nextSeverity, {
                   shouldValidate: true,
                 });
@@ -109,8 +153,38 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
           </div>
 
           <div className="space-y-1.5">
+            <label className="text-sm font-medium">Repository</label>
+            <Select
+              value={repoFullNameValue}
+              onValueChange={(value) => {
+                const nextRepo = value ?? "";
+                form.setValue("repo_full_name", nextRepo, {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                });
+              }}
+            >
+              <SelectTrigger className="w-full" aria-label="Incident repository">
+                <SelectValue placeholder="Select repository" />
+              </SelectTrigger>
+              <SelectContent>
+                {(githubRepos.data ?? []).map((repo) => (
+                  <SelectItem key={repo.full_name} value={repo.full_name}>
+                    {repo.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.formState.errors.repo_full_name ? (
+              <p className="text-xs text-destructive">
+                {form.formState.errors.repo_full_name.message}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="meeting_link">
-              Meeting link (optional)
+              Meeting link
             </label>
             <Input
               id="meeting_link"
@@ -126,16 +200,8 @@ export function StartIncidentModal({ open, onOpenChange, workspaceId }: StartInc
 
           {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
 
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.formState.isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
+          <div className="flex items-center justify-end">
+            <Button type="submit" disabled={isStartDisabled}>
               {form.formState.isSubmitting ? "Starting..." : "Start Incident"}
             </Button>
           </div>

@@ -39,7 +39,8 @@ class IncidentCreate(BaseModel):
     workspace_id: uuid.UUID
     title: str
     severity: Literal["P1", "P2", "P3", "P4"]
-    meeting_link: str | None = None
+    repo_full_name: str | None = None
+    meeting_link: str
 
 
 class IncidentUpdate(BaseModel):
@@ -54,6 +55,7 @@ class IncidentResponse(BaseModel):
     title: str
     severity: str
     status: str
+    repo_full_name: str | None
     meeting_link: str | None
     bot_session_id: str | None
     audio_s3_key: str | None
@@ -246,6 +248,7 @@ async def create_incident(
         workspace_id=body.workspace_id,
         title=body.title,
         severity=body.severity,
+        repo_full_name=body.repo_full_name,
         meeting_link=body.meeting_link,
         status="active",
     )

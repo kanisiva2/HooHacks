@@ -221,15 +221,16 @@ async def _auto_deep_dive(db_original: AsyncSession, incident_id: str) -> None:
         from app.services.deep_dive_agent import run_deep_dive
 
         async with async_session_maker() as db:
-            # Fetch incident workspace
+            # Fetch incident workspace + incident-level repo selection
             result = await db.execute(
-                select(Incident.workspace_id).where(
+                select(Incident.workspace_id, Incident.repo_full_name).where(
                     Incident.id == uuid.UUID(incident_id)
                 )
             )
-            workspace_id = result.scalar_one_or_none()
-            if workspace_id is None:
+            row = result.one_or_none()
+            if row is None:
                 return
+            workspace_id, incident_repo = row
 
             # Fetch GitHub integration
             result = await db.execute(
@@ -244,9 +245,9 @@ async def _auto_deep_dive(db_original: AsyncSession, incident_id: str) -> None:
                 return
 
             meta = gh.metadata_json or {}
-            repo = meta.get("default_repo")
+            repo = incident_repo or meta.get("default_repo")
             if not repo:
-                logger.info("Auto deep-dive skipped: no default_repo configured for incident %s", incident_id)
+                logger.info("Auto deep-dive skipped: no repo configured for incident %s", incident_id)
                 return
 
             # Build transcript summary from last 30 chunks

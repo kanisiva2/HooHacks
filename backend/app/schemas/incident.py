@@ -8,7 +8,8 @@ class IncidentCreate(BaseModel):
     workspace_id: UUID
     title: str
     severity: str
-    meeting_link: str | None = None
+    repo_full_name: str | None = None
+    meeting_link: str
 
 
 class IncidentUpdate(BaseModel):
@@ -22,6 +23,7 @@ class IncidentResponse(BaseModel):
     title: str
     severity: str
     status: str
+    repo_full_name: str | None = None
     meeting_link: str | None = None
     bot_session_id: str | None = None
     created_at: datetime
