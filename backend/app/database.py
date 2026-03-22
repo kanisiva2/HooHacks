@@ -12,6 +12,9 @@ engine = create_async_engine(
     settings.database_url,
     echo=False,
     pool_pre_ping=True,
+    pool_size=5,        # keep 5 persistent connections ready
+    max_overflow=10,    # allow 10 extra connections under burst
+    pool_recycle=300,   # recycle connections every 5 minutes to avoid stale pgbouncer sessions
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,

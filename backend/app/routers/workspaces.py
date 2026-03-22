@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db, get_current_user_id
 from app.models.workspace import Workspace, WorkspaceMember
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -80,6 +83,7 @@ async def create_workspace(
     db.add(owner_member)
     await db.commit()
 
+    logger.info("workspace_created workspace_id=%s user_id=%s name=%s", workspace.id, user_id, body.name)
     return WorkspaceResponse.model_validate(workspace)
 
 
@@ -153,4 +157,8 @@ async def add_member(
     db.add(member)
     await db.commit()
 
+    logger.info(
+        "workspace_member_added workspace_id=%s new_user_id=%s role=%s added_by=%s",
+        workspace_id, body.user_id, body.role, user_id,
+    )
     return MemberResponse.model_validate(member)

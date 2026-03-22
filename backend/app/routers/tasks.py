@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -150,7 +151,6 @@ async def approve_task(
 
     # No Jira integration — just move to synced without a Jira ticket
     task.status = "synced"
-    from datetime import datetime
     task.synced_at = datetime.utcnow()
     await db.commit()
     await _push_task_update(str(incident_id), task)
