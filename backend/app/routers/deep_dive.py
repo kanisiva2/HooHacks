@@ -12,6 +12,7 @@ from app.models.incident import Incident
 from app.models.integration import Integration
 from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
+from app.services.event_logger import log_event
 from app.schemas.deep_dive import DeepDiveResultOut
 from app.services.github import get_file_content
 
@@ -116,6 +117,9 @@ async def trigger_deep_dive(
     transcript_summary = " ".join(
         f"{c.speaker}: {c.text}" for c in reversed(chunks) if c.text
     ) or f"Incident: {incident.title}"
+
+    # Log deep_dive_started event before launching
+    await log_event(db, incident_id, "deep_dive_started", {"repo": repo})
 
     # Launch E4's deep dive agent as a background task (lazy import — safe if not yet merged)
     # NOTE: db is NOT passed — the request session closes when this endpoint returns.
