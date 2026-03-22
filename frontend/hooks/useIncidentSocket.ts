@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { useIncidentStore } from "@/stores/incidentStore";
 import type {
   ActionItem,
@@ -43,6 +44,7 @@ function toActionItem(message: ActionItemUpdateMessage): ActionItem {
 }
 
 export function useIncidentSocket(incidentId: string) {
+  const supabase = useSupabase();
   const websocketRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,14 +65,30 @@ export function useIncidentSocket(incidentId: string) {
 
     let isMounted = true;
 
-    const connect = () => {
+    const connect = async () => {
       if (!isMounted) return;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (!session?.access_token) {
+        setConnectionStatus("disconnected");
+        toastError("Missing session for live connection");
+        return;
+      }
 
       const wsBase = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
       setConnectionStatus(
         reconnectAttemptsRef.current > 0 ? "reconnecting" : "connecting",
       );
-      const socket = new WebSocket(`${wsBase}/ws/${incidentId}`);
+      const socket = new WebSocket(
+        `${wsBase}/ws/${incidentId}?token=${encodeURIComponent(session.access_token)}`,
+      );
       websocketRef.current = socket;
 
       socket.onopen = () => {
@@ -144,7 +162,7 @@ export function useIncidentSocket(incidentId: string) {
         }
 
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          void connect();
         }, delay);
       };
 
@@ -158,7 +176,9 @@ export function useIncidentSocket(incidentId: string) {
 
     setIncidentId(incidentId);
     setConnectionStatus("connecting");
-    const connectTimeout = setTimeout(connect, 50);
+    const connectTimeout = setTimeout(() => {
+      void connect();
+    }, 50);
 
     return () => {
       isMounted = false;
@@ -180,5 +200,6 @@ export function useIncidentSocket(incidentId: string) {
     setIncidentId,
     setConnectionStatus,
     reset,
+    supabase,
   ]);
 }
