@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceDefaults } from "@/hooks/useWorkspaceDefaults";
@@ -22,10 +23,30 @@ export function TaskBoard({ incidentId }: TaskBoardProps) {
   const approveTask = useApproveTask();
   const dismissTask = useDismissTask();
   const defaults = useWorkspaceDefaults();
+  const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
 
   const visibleItems = actionItems.filter(
     (item) => item.status !== "dismissed" && item.status !== "closed",
   );
+
+  const handleApprove = (taskId: string) => {
+    approveTask.mutate(
+      { incidentId, taskId },
+      {
+        onSuccess: (data) => {
+          if (data.sync_error) {
+            setSyncErrors((prev) => ({ ...prev, [taskId]: data.sync_error! }));
+          } else {
+            setSyncErrors((prev) => {
+              const next = { ...prev };
+              delete next[taskId];
+              return next;
+            });
+          }
+        },
+      },
+    );
+  };
 
   return (
     <div className="flex h-full flex-col rounded-xl border bg-card">
@@ -57,9 +78,8 @@ export function TaskBoard({ incidentId }: TaskBoardProps) {
                       item={item}
                       incidentId={incidentId}
                       defaults={defaults.data}
-                      onApprove={() =>
-                        approveTask.mutate({ incidentId, taskId: item.id })
-                      }
+                      syncError={syncErrors[item.id] ?? item.sync_error}
+                      onApprove={() => handleApprove(item.id)}
                       onDismiss={() =>
                         dismissTask.mutate({ incidentId, taskId: item.id })
                       }
@@ -81,6 +101,7 @@ type TaskCardProps = {
   item: ActionItem;
   incidentId: string;
   defaults: { jira_site_url?: string } | undefined;
+  syncError?: string | null;
   onApprove: () => void;
   onDismiss: () => void;
   isApproving: boolean;
@@ -90,6 +111,7 @@ type TaskCardProps = {
 function TaskCard({
   item,
   defaults,
+  syncError,
   onApprove,
   onDismiss,
   isApproving,
@@ -114,6 +136,16 @@ function TaskCard({
           </Badge>
         ) : null}
       </div>
+      {syncError && item.status === "proposed" && (
+        <div className="rounded bg-red-50 px-2 py-1 dark:bg-red-950/30">
+          <Badge variant="destructive" className="text-[10px]">
+            Sync failed
+          </Badge>
+          <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">
+            {syncError}
+          </p>
+        </div>
+      )}
       {item.jira_issue_key && defaults?.jira_site_url ? (
         <a
           className="text-xs text-blue-600 hover:underline"
@@ -136,7 +168,7 @@ function TaskCard({
             disabled={isApproving || isDismissing}
             onClick={onApprove}
           >
-            Approve
+            {syncError ? "Retry" : "Approve"}
           </Button>
           <Button
             size="xs"

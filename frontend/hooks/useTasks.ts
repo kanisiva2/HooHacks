@@ -85,7 +85,7 @@ export function useApproveTask() {
 
   return useMutation({
     mutationFn: async ({ incidentId, taskId }: TaskActionInput) => {
-      const { data } = await api.post<ActionItem>(
+      const { data } = await api.post<ActionItem & { sync_error?: string }>(
         `/api/incidents/${incidentId}/tasks/${taskId}/approve`,
       );
       return data;

@@ -41,6 +41,7 @@ export type ActionItem = {
   confidence: number | null;
   jira_issue_key: string | null;
   proposed_at: string;
+  sync_error?: string | null;
 };
 
 export type DeepDiveResult = {
@@ -112,6 +113,7 @@ export type ActionItemUpdateMessage = {
   confidence: number | null;
   jira_issue_key: string | null;
   proposed_at?: string;
+  sync_error?: string | null;
 };
 
 export type DeepDiveUpdateMessage = {

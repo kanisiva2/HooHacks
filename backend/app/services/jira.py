@@ -1,12 +1,14 @@
 """
 Jira REST API v3 client.
 Functions: create_jira_issue, update_jira_assignee, get_jira_projects,
-           get_jira_users, get_valid_jira_token, build_adf_description.
+           get_jira_users, get_valid_jira_token, build_adf_description,
+           check_jira_health.
 Descriptions MUST use Atlassian Document Format (ADF) — plain strings are rejected.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -25,6 +27,8 @@ logger = logging.getLogger(__name__)
 JIRA_API_TPL = "https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3"
 JIRA_TIMEOUT = 15.0
 TOKEN_REFRESH_BUFFER_SECONDS = 300  # refresh if expires within 5 minutes
+JIRA_MAX_RETRIES = 3
+JIRA_RETRY_STATUSES = {429, 500, 502, 503}
 
 
 def _base_url(cloud_id: str) -> str:
@@ -47,24 +51,49 @@ async def _jira_request(
     json: dict | None = None,
     params: dict | None = None,
 ) -> httpx.Response:
-    """Central request helper with timeout, 429 handling, and error logging."""
-    async with httpx.AsyncClient(timeout=JIRA_TIMEOUT) as client:
-        resp = await client.request(
-            method, url, headers=_headers(access_token),
-            json=json, params=params,
-        )
-    try:
-        resp.raise_for_status()
-    except httpx.HTTPStatusError:
-        if resp.status_code == 429:
-            retry_after = resp.headers.get("Retry-After", "?")
-            logger.warning(
-                "Jira rate limited (429); Retry-After: %s", retry_after,
-            )
-        else:
+    """Central request helper with timeout, retry on transient errors, and error logging.
+
+    Retries up to JIRA_MAX_RETRIES times on 429/500/502/503 with exponential backoff.
+    On 429, honors the Retry-After header if present.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(JIRA_MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=JIRA_TIMEOUT) as client:
+                resp = await client.request(
+                    method, url, headers=_headers(access_token),
+                    json=json, params=params,
+                )
+            if resp.status_code not in JIRA_RETRY_STATUSES:
+                resp.raise_for_status()
+                return resp
+
+            retry_after = resp.headers.get("Retry-After")
+            if attempt < JIRA_MAX_RETRIES:
+                delay = float(retry_after) if retry_after and retry_after.isdigit() else (2 ** attempt)
+                logger.warning(
+                    "Jira %s %s → %s (attempt %d/%d), retrying in %.1fs",
+                    method, url, resp.status_code, attempt + 1, JIRA_MAX_RETRIES + 1, delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+            resp.raise_for_status()
+
+        except httpx.TimeoutException:
+            last_exc = httpx.TimeoutException(f"Jira request timed out: {method} {url}")
+            if attempt < JIRA_MAX_RETRIES:
+                delay = 2 ** attempt
+                logger.warning("Jira timeout on %s %s (attempt %d/%d), retrying in %.1fs",
+                               method, url, attempt + 1, JIRA_MAX_RETRIES + 1, delay)
+                await asyncio.sleep(delay)
+                continue
+            raise last_exc
+
+        except httpx.HTTPStatusError:
             logger.error("Jira API %s %s → %s", method, url, resp.status_code)
-        raise
-    return resp
+            raise
+
+    raise last_exc or Exception("Jira request failed after retries")
 
 
 # ---------------------------------------------------------------------------
@@ -239,3 +268,26 @@ async def get_jira_users(
         }
         for u in resp.json()
     ]
+
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+async def check_jira_health(
+    db: AsyncSession, workspace_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Lightweight health check: validate token and call GET /myself.
+
+    Returns ``{"healthy": True}`` or ``{"healthy": False, "error": "..."}``."""
+    try:
+        token, cloud_id = await get_valid_jira_token(db, workspace_id)
+    except HTTPException as exc:
+        return {"healthy": False, "error": exc.detail}
+
+    try:
+        url = f"{_base_url(cloud_id)}/myself"
+        await _jira_request("GET", url, token)
+        return {"healthy": True, "error": None}
+    except Exception as exc:
+        return {"healthy": False, "error": str(exc)}

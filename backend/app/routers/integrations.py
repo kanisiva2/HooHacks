@@ -20,8 +20,13 @@ from app.config import settings
 from app.deps import get_current_user_id, get_db
 from app.models.integration import Integration
 from app.models.workspace import WorkspaceMember
-from app.services.github import get_user_repos, get_valid_github_token
-from app.services.jira import get_jira_projects, get_valid_jira_token
+from app.services.github import (
+    get_user_repos,
+    get_valid_github_token,
+    check_github_health,
+    get_rate_limit_info,
+)
+from app.services.jira import get_jira_projects, get_valid_jira_token, check_jira_health
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +47,8 @@ class IntegrationStatusFull(BaseModel):
     has_jira: bool
     github_default_repo: Optional[str] = None
     jira_default_project_key: Optional[str] = None
+    github_healthy: Optional[bool] = None
+    jira_healthy: Optional[bool] = None
 
 
 class IntegrationDefaultsRequest(BaseModel):
@@ -529,6 +536,45 @@ async def update_integration_defaults(
         if jira_integration
         else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Health checks
+# ---------------------------------------------------------------------------
+
+@router.post("/health-check")
+async def run_health_check(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Run on-demand health checks for GitHub and Jira integrations."""
+    workspace_id = await _get_user_workspace_id(user_id, db)
+
+    result = await db.execute(
+        select(Integration).where(Integration.workspace_id == workspace_id)
+    )
+    integrations = {i.provider: i for i in result.scalars().all()}
+
+    github_health = None
+    jira_health = None
+
+    if "github" in integrations:
+        github_health = await check_github_health(db, workspace_id)
+    if "jira" in integrations:
+        jira_health = await check_jira_health(db, workspace_id)
+
+    return {
+        "github": github_health,
+        "jira": jira_health,
+    }
+
+
+@router.get("/github/rate-limit")
+async def github_rate_limit(
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """Return current GitHub rate limit tracking info."""
+    return get_rate_limit_info()
 
 
 # ---------------------------------------------------------------------------

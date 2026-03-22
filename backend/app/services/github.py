@@ -1,7 +1,8 @@
 """
 GitHub REST API client.
 Functions: get_repo_tree, get_file_content, get_recent_commits, get_commit_diff,
-           get_user_repos, get_valid_github_token.
+           get_user_repos, get_valid_github_token, github_rate_limit_ok,
+           check_github_health.
 All use httpx.AsyncClient with 10s timeout. File content is base64-decoded.
 """
 
@@ -9,7 +10,9 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 import uuid
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
@@ -24,6 +27,10 @@ GITHUB_API = "https://api.github.com"
 GITHUB_TIMEOUT = 10.0
 MAX_DIFF_CHARS = 10_000
 
+# Module-level rate limit state (updated after every API response)
+_rate_limit_remaining: int | None = None
+_rate_limit_reset: float | None = None  # Unix epoch timestamp
+
 
 def _headers(token: str) -> dict[str, str]:
     return {
@@ -34,18 +41,52 @@ def _headers(token: str) -> dict[str, str]:
 
 
 def _check_rate_limit(resp: httpx.Response) -> None:
-    """Log a warning when GitHub rate limit is nearly or fully exhausted."""
+    """Store rate limit state and log when nearly or fully exhausted."""
+    global _rate_limit_remaining, _rate_limit_reset
+
     remaining = resp.headers.get("X-RateLimit-Remaining")
     if remaining is None:
         return
     remaining_int = int(remaining)
+    _rate_limit_remaining = remaining_int
+
+    reset_header = resp.headers.get("X-RateLimit-Reset")
+    if reset_header:
+        _rate_limit_reset = float(reset_header)
+
     if remaining_int == 0:
-        reset = resp.headers.get("X-RateLimit-Reset", "?")
         logger.warning(
-            "GitHub rate limit exhausted; resets at epoch %s", reset,
+            "GitHub rate limit exhausted; resets at epoch %s",
+            reset_header or "?",
         )
     elif remaining_int < 50:
         logger.info("GitHub rate limit low: %s remaining", remaining_int)
+
+
+def github_rate_limit_ok(min_required: int = 50) -> bool:
+    """Return False if the stored rate limit is below *min_required* and the reset
+    window hasn't passed yet. Safe to call at any time — returns True when no
+    rate limit data has been observed yet."""
+    if _rate_limit_remaining is None:
+        return True
+    if _rate_limit_remaining >= min_required:
+        return True
+    if _rate_limit_reset is not None and time.time() >= _rate_limit_reset:
+        return True
+    return False
+
+
+def get_rate_limit_info() -> dict[str, Any]:
+    """Return current rate limit tracking info (for debugging endpoints)."""
+    reset_in: float | None = None
+    if _rate_limit_reset is not None:
+        reset_in = max(0.0, _rate_limit_reset - time.time())
+    return {
+        "remaining": _rate_limit_remaining,
+        "reset_epoch": _rate_limit_reset,
+        "reset_in_seconds": round(reset_in, 1) if reset_in is not None else None,
+        "ok": github_rate_limit_ok(),
+    }
 
 
 async def _github_request(
@@ -191,3 +232,24 @@ async def get_commit_diff(token: str, repo_full_name: str, sha: str) -> str:
     hdrs["Accept"] = "application/vnd.github.diff"
     resp = await _github_request("GET", url, token, headers_override=hdrs)
     return resp.text[:MAX_DIFF_CHARS]
+
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+async def check_github_health(
+    db: AsyncSession, workspace_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Lightweight health check: validate token via GET /user.
+
+    Returns ``{"healthy": True}`` or ``{"healthy": False, "error": "..."}``.
+    On 401, the integration is removed by ``get_valid_github_token``.
+    """
+    try:
+        await get_valid_github_token(db, workspace_id)
+        return {"healthy": True, "error": None}
+    except HTTPException as exc:
+        return {"healthy": False, "error": exc.detail}
+    except Exception as exc:
+        return {"healthy": False, "error": str(exc)}
