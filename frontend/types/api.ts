@@ -22,6 +22,7 @@ export type Incident = {
   title: string;
   severity: Severity;
   status: IncidentStatus;
+  repo_full_name?: string | null;
   meeting_link: string | null;
   bot_session_id: string | null;
   audio_s3_key?: string | null;

@@ -20,6 +20,7 @@ class Incident(Base):
     severity: Mapped[str] = mapped_column(String, nullable=False)  # "P1" | "P2" | "P3" | "P4"
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
     # status: "active" | "resolved" | "closed"
+    repo_full_name: Mapped[str | None] = mapped_column(String, nullable=True)
     meeting_link: Mapped[str | None] = mapped_column(String, nullable=True)
     bot_session_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Skribby bot ID
     audio_s3_key: Mapped[str | None] = mapped_column(String, nullable=True)

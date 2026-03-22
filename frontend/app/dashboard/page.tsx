@@ -102,8 +102,8 @@ export default function DashboardPage() {
 
             <section className="grid gap-3 md:grid-cols-3">
               <Button onClick={() => setModalOpen("startIncident", true)}>Quick Launch Incident</Button>
-              <Button nativeButton={false} variant="outline" render={<Link href="/integrations" />}>
-                Manage integrations
+              <Button nativeButton={false} variant="outline" render={<Link href="/settings" />}>
+                Manage settings
               </Button>
               {incidentsQuery.data?.[0] ? (
                 <Button nativeButton={false} variant="outline" render={<Link href={`/incidents/${incidentsQuery.data[0].id}`} />}>

@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, Link2, Settings, Siren } from "lucide-react";
+import { Gauge, Settings, Siren } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Gauge },
   { href: "/incidents", label: "Incidents", icon: Siren },
-  { href: "/integrations", label: "Integrations", icon: Link2 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -17,7 +16,7 @@ export function MobileNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur md:hidden">
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-3">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
