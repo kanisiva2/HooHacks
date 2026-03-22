@@ -8,7 +8,6 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -137,16 +136,13 @@ export default function LoginPage() {
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6 md:px-10 lg:px-12">
         <header className="mb-10 flex items-center justify-between gap-4 rounded-full border border-white/60 bg-white/55 px-4 py-3 backdrop-blur-xl md:px-6">
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
               S
             </div>
-            <div>
-              <p className="text-sm font-semibold tracking-[0.2em] uppercase text-slate-900">
-                Sprynt
-              </p>
-              <p className="text-xs text-slate-600">AI Incident Operator</p>
-            </div>
+            <p className="text-sm font-semibold tracking-[0.2em] uppercase text-slate-900">
+              Sprynt
+            </p>
           </Link>
 
           <Button nativeButton={false} variant="ghost" render={<Link href="/" />}>
@@ -156,23 +152,15 @@ export default function LoginPage() {
         </header>
 
         <section className="grid flex-1 items-center gap-10 lg:grid-cols-[0.98fr_1.02fr]">
-          <div className="flex justify-center lg:justify-start">
-            <div className="flex max-w-2xl flex-col justify-center">
-            <Badge
-              variant="outline"
-              className="mb-5 rounded-full border-slate-300/80 bg-white/75 px-4 py-1 text-[11px] tracking-[0.22em] uppercase text-slate-700"
-            >
-              Operator Access
-            </Badge>
-
+          <div className="-mt-16 flex justify-center text-center lg:justify-center">
+            <div className="flex max-w-lg flex-col items-center justify-center">
             <h1 className="text-5xl font-semibold leading-[0.94] tracking-[-0.06em] text-slate-950 md:text-6xl">
-              Walk back into the
-              <span className="block text-[rgba(219,87,52,0.96)]">incident room with context.</span>
+              You handle the call.
+              <span className="block text-[rgba(219,87,52,0.96)]">Sprynt handles the rest.</span>
             </h1>
 
-            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-700">
-              Sign in to reopen live incidents, review action items, and keep the meeting,
-              transcript, and code investigation in one place.
+            <p className="mt-5 max-w-md text-lg leading-8 text-slate-700">
+              Sign in to get back to your incidents, action items, and live investigations.
             </p>
           </div>
           </div>
@@ -181,14 +169,6 @@ export default function LoginPage() {
             <Card className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/72 p-2 shadow-[0_28px_80px_rgba(15,23,42,0.16)] backdrop-blur-xl">
               <div className="rounded-[1.6rem] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(248,245,238,0.94)_100%)] p-6 md:p-7">
                 <CardHeader className="px-0 pt-0">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <Badge variant="outline" className="rounded-full bg-white/75 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-600">
-                      {mode === "signin" ? "Return To Console" : "Create Operator Access"}
-                    </Badge>
-                    <div className="rounded-full border border-slate-200 bg-white/75 px-3 py-1 text-xs text-slate-600">
-                      Secure auth
-                    </div>
-                  </div>
                   <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">
                     {mode === "signin" ? "Sign In To Sprynt" : "Create Your Account"}
                   </CardTitle>
