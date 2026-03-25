@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Incident, TranscriptLine } from "@/types/api";
 
@@ -76,6 +76,24 @@ export function useIncidentTranscript(incidentId: string | undefined) {
           toEpochMs(line.created_at) ??
           Date.now(),
       }));
+    },
+  });
+}
+
+export function useDeleteIncident(workspaceId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (incidentId: string) => {
+      await api.delete(`/api/incidents/${incidentId}`);
+      return incidentId;
+    },
+    onSuccess: async (incidentId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["incidents", workspaceId] }),
+        queryClient.removeQueries({ queryKey: ["incident", incidentId] }),
+        queryClient.removeQueries({ queryKey: ["incident-transcript", incidentId] }),
+      ]);
     },
   });
 }

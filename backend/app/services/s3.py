@@ -85,6 +85,14 @@ async def download_json(key: str) -> Any:
     return json.loads(await download_text(key))
 
 
+async def delete_object(key: str) -> None:
+    """Delete an object from S3. Missing objects are treated as success."""
+    session = _session()
+    async with session.client("s3") as s3:
+        await s3.delete_object(Bucket=_bucket(), Key=key)
+    logger.info("Deleted s3://%s/%s", _bucket(), key)
+
+
 async def get_presigned_url(key: str, expires_in: int = 3600) -> str:
     """Generate a temporary pre-signed download URL (default 1-hour expiry)."""
     session = _session()

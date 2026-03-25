@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 # import httpx  # Only needed for S3 artifact export (disabled)
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.services.event_logger import log_event
 from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
 from app.services.s3 import (
+    delete_object,
     download_json,
     get_presigned_url,
     incident_transcript_key,
@@ -436,3 +437,47 @@ async def get_artifacts(
         "transcript_url": transcript_url,
         "report_url": None,
     }
+
+
+@router.delete("/incidents/{incident_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_incident(
+    incident_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    incident = await _get_incident_or_404(db, incident_id)
+    await _assert_workspace_member(db, incident.workspace_id, user_id)
+
+    if incident.bot_session_id and incident.status == "active":
+        try:
+            await stop_bot(incident.bot_session_id)
+        except Exception as exc:
+            logger.warning(
+                "stop_bot failed during delete for incident %s (bot=%s): %s",
+                incident_id,
+                incident.bot_session_id,
+                exc,
+            )
+
+    artifact_keys = [
+        key
+        for key in (
+            incident.audio_s3_key,
+            incident.transcript_s3_key,
+            incident.report_s3_key,
+        )
+        if key
+    ]
+    for key in artifact_keys:
+        try:
+            await delete_object(key)
+        except Exception:
+            logger.exception(
+                "Failed deleting incident artifact for incident %s key %s",
+                incident_id,
+                key,
+            )
+
+    await db.delete(incident)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
