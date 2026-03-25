@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, FileCode2, Search } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, FileCode2, Search } from "lucide-react";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AgentStatusBadge } from "@/components/incident/AgentStatusBadge";
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDeepDiveResults } from "@/hooks/useDeepDive";
-import { useIncident, useIncidents } from "@/hooks/useIncident";
+import { useIncident, useIncidentTranscript, useIncidents } from "@/hooks/useIncident";
 import { useIncidentSocket } from "@/hooks/useIncidentSocket";
 import { useTasks } from "@/hooks/useTasks";
 import { usePrimaryWorkspace } from "@/hooks/useWorkspaces";
@@ -34,18 +34,28 @@ export default function IncidentRoomPage() {
 
   const { workspace } = usePrimaryWorkspace();
   const incident = useIncident(incidentId);
+  const transcriptQuery = useIncidentTranscript(incidentId);
   const incidents = useIncidents(workspace?.id);
   const tasksQuery = useTasks(incidentId);
   const deepDiveQuery = useDeepDiveResults(incidentId);
   const suspectFiles = useIncidentStore((store) => store.suspectFiles);
+  const setTranscript = useIncidentStore((store) => store.setTranscript);
   const upsertActionItem = useIncidentStore((store) => store.upsertActionItem);
   const setSuspectFiles = useIncidentStore((store) => store.setSuspectFiles);
   const activePanel = useUIStore((store) => store.activePanel);
   const setActivePanel = useUIStore((store) => store.setActivePanel);
+  const [isDownloadingTranscript, setIsDownloadingTranscript] = useState(false);
   const hasShownDeepDiveToastRef = useRef(false);
   const previousDeepDiveCountRef = useRef(0);
 
   useIncidentSocket(incidentId);
+
+  useEffect(() => {
+    if (!transcriptQuery.data) {
+      return;
+    }
+    setTranscript(transcriptQuery.data);
+  }, [transcriptQuery.data, setTranscript]);
 
   useEffect(() => {
     if (!tasksQuery.data) {
@@ -89,6 +99,30 @@ export default function IncidentRoomPage() {
     }
   };
 
+  const handleDownloadTranscript = async () => {
+    if (!incident.data?.transcript_s3_key) {
+      toastError("No persisted transcript is available yet");
+      return;
+    }
+
+    setIsDownloadingTranscript(true);
+    try {
+      const { data } = await api.get<{ transcript_url: string | null }>(
+        `/api/incidents/${incidentId}/artifacts`,
+      );
+      if (!data.transcript_url) {
+        toastError("Transcript download is not available");
+        return;
+      }
+      window.open(data.transcript_url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Failed to download transcript", error);
+      toastError("Failed to download transcript");
+    } finally {
+      setIsDownloadingTranscript(false);
+    }
+  };
+
   return (
     <ProtectedPage>
       <OnboardingGate>
@@ -125,6 +159,18 @@ export default function IncidentRoomPage() {
 
               <div className="flex items-center gap-3">
                 <AgentStatusBadge />
+                {incident.data?.transcript_s3_key ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadTranscript}
+                    disabled={isDownloadingTranscript}
+                    className="rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white"
+                  >
+                    <ArrowDownToLine className="mr-1.5 h-4 w-4" />
+                    {isDownloadingTranscript ? "Preparing..." : "Transcript"}
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

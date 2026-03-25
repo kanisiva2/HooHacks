@@ -10,21 +10,19 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import async_session_maker
 from app.deps import get_db, get_current_user_id
 from app.models.action_item import ActionItem
 from app.models.incident import Incident
 from app.services.event_logger import log_event
 from app.models.transcript import TranscriptChunk
 from app.models.workspace import WorkspaceMember
-# S3 artifact storage — disabled until AWS credentials are configured.
-# from app.services.s3 import (
-#     get_presigned_url,
-#     upload_bytes,
-#     upload_text,
-#     incident_audio_key,
-#     incident_transcript_key,
-#     incident_report_key,
-# )
+from app.services.s3 import (
+    download_json,
+    get_presigned_url,
+    incident_transcript_key,
+    upload_json,
+)
 from app.services.skribby import create_bot, detect_service, stop_bot, get_bot
 from app.services.skribby_listener import listen_to_skribby
 
@@ -178,59 +176,50 @@ def _build_report(
     return "\n".join(lines)
 
 
-# S3 artifact export — disabled until AWS credentials are configured.
-# To re-enable: uncomment this function, the S3 imports above, and the
-# asyncio.create_task(_export_artifacts(...)) call in update_incident.
-#
-# async def _export_artifacts(incident_id: str, bot_session_id: str | None) -> None:
-#     """Background task — exports transcript, audio, and report to S3."""
-#     from app.database import async_session_maker
-#     from app.models.deep_dive import DeepDiveResult
-#     async with async_session_maker() as db:
-#         try:
-#             incident = await _get_incident_or_404(db, uuid.UUID(incident_id))
-#             chunks_result = await db.execute(
-#                 select(TranscriptChunk)
-#                 .where(TranscriptChunk.incident_id == uuid.UUID(incident_id))
-#                 .order_by(TranscriptChunk.start_ts.asc().nulls_last())
-#             )
-#             chunks = chunks_result.scalars().all()
-#             transcript_text = "\n".join(
-#                 f"[{c.start_ts or '?'}] {c.speaker}: {c.text}"
-#                 for c in chunks if c.text
-#             )
-#             t_key = incident_transcript_key(incident_id)
-#             await upload_text(t_key, transcript_text)
-#             incident.transcript_s3_key = t_key
-#             if bot_session_id:
-#                 try:
-#                     recording_url = await _poll_recording_url(bot_session_id)
-#                     if recording_url:
-#                         async with httpx.AsyncClient(timeout=60.0) as client:
-#                             resp = await client.get(recording_url)
-#                             resp.raise_for_status()
-#                         a_key = incident_audio_key(incident_id)
-#                         await upload_bytes(a_key, resp.content, "audio/webm")
-#                         incident.audio_s3_key = a_key
-#                 except Exception as exc:
-#                     logger.warning("Audio export failed: %s", exc)
-#             tasks_result = await db.execute(
-#                 select(ActionItem).where(ActionItem.incident_id == uuid.UUID(incident_id))
-#             )
-#             tasks = tasks_result.scalars().all()
-#             dd_result = await db.execute(
-#                 select(DeepDiveResult)
-#                 .where(DeepDiveResult.incident_id == uuid.UUID(incident_id))
-#                 .order_by(DeepDiveResult.rank.asc())
-#             )
-#             dd_rows = dd_result.scalars().all()
-#             report_md = _build_report(incident, chunks, tasks, dd_rows)
-#             r_key = incident_report_key(incident_id)
-#             await upload_text(r_key, report_md)
-#             incident.report_s3_key = r_key
-#             await db.commit()
-#         except Exception as exc:
-#             logger.exception("_export_artifacts failed for incident %s: %s", incident_id, exc)
+def _serialize_transcript_chunks(
+    chunks: list[TranscriptChunk],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": str(c.id),
+            "speaker": c.speaker,
+            "text": c.text,
+            "start_ts": c.start_ts,
+            "end_ts": c.end_ts,
+            "is_final": c.is_final,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in chunks
+    ]
+
+
+async def _export_transcript_artifact(incident_id: str) -> None:
+    """Background task — exports transcript JSON to S3 and stores the key on the incident."""
+    async with async_session_maker() as db:
+        try:
+            incident = await _get_incident_or_404(db, uuid.UUID(incident_id))
+            chunks_result = await db.execute(
+                select(TranscriptChunk)
+                .where(TranscriptChunk.incident_id == uuid.UUID(incident_id))
+                .order_by(TranscriptChunk.start_ts.asc().nulls_last())
+            )
+            chunks = chunks_result.scalars().all()
+            payload = _serialize_transcript_chunks(chunks)
+            transcript_key = incident_transcript_key(incident_id)
+            await upload_json(transcript_key, payload)
+            incident.transcript_s3_key = transcript_key
+            await db.commit()
+            logger.info(
+                "Transcript artifact exported for incident %s to s3://%s",
+                incident_id,
+                transcript_key,
+            )
+        except Exception as exc:
+            logger.exception(
+                "_export_transcript_artifact failed for incident %s: %s",
+                incident_id,
+                exc,
+            )
 
 
 # ── Endpoints ──
@@ -372,10 +361,7 @@ async def update_incident(
                         incident_id, incident.bot_session_id, exc,
                     )
 
-            # S3 artifact export — disabled until AWS credentials are configured.
-            # asyncio.create_task(
-            #     _export_artifacts(str(incident_id), incident.bot_session_id)
-            # )
+            asyncio.create_task(_export_transcript_artifact(str(incident_id)))
 
     await db.commit()
     return IncidentResponse.model_validate(incident)
@@ -387,7 +373,11 @@ async def get_transcript(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """Return all transcript chunks for an incident ordered by start_ts."""
+    """Return transcript chunks for an incident ordered by start_ts.
+
+    Prefers Postgres as the primary source and falls back to S3 JSON when the
+    incident has a persisted transcript artifact but no transcript rows remain.
+    """
     incident = await _get_incident_or_404(db, incident_id)
     await _assert_workspace_member(db, incident.workspace_id, user_id)
 
@@ -397,41 +387,52 @@ async def get_transcript(
         .order_by(TranscriptChunk.start_ts.asc().nulls_last())
     )
     chunks = result.scalars().all()
-    return [
-        {
-            "id": str(c.id),
-            "speaker": c.speaker,
-            "text": c.text,
-            "start_ts": c.start_ts,
-            "end_ts": c.end_ts,
-            "is_final": c.is_final,
-            "created_at": c.created_at.isoformat(),
-        }
-        for c in chunks
-    ]
+    if chunks:
+        return _serialize_transcript_chunks(chunks)
+
+    if incident.transcript_s3_key:
+        try:
+            artifact = await download_json(incident.transcript_s3_key)
+            if isinstance(artifact, list):
+                return artifact
+            logger.warning(
+                "Transcript artifact for incident %s was not a list; ignoring",
+                incident_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed loading transcript artifact from S3 for incident %s",
+                incident_id,
+            )
+
+    return []
 
 
-# S3 artifacts endpoint — disabled until AWS credentials are configured.
-# @router.get("/incidents/{incident_id}/artifacts")
-# async def get_artifacts(
-#     incident_id: uuid.UUID,
-#     user_id: str = Depends(get_current_user_id),
-#     db: AsyncSession = Depends(get_db),
-# ) -> dict[str, Any]:
-#     incident = await _get_incident_or_404(db, incident_id)
-#     await _assert_workspace_member(db, incident.workspace_id, user_id)
-#     async def _safe_presigned(key: str | None) -> str | None:
-#         if not key:
-#             return None
-#         try:
-#             return await get_presigned_url(key)
-#         except Exception:
-#             return None
-#     audio_url = await _safe_presigned(incident.audio_s3_key)
-#     transcript_url = await _safe_presigned(incident.transcript_s3_key)
-#     report_url = await _safe_presigned(incident.report_s3_key)
-#     return {
-#         "audio_url": audio_url,
-#         "transcript_url": transcript_url,
-#         "report_url": report_url,
-#     }
+@router.get("/incidents/{incident_id}/artifacts")
+async def get_artifacts(
+    incident_id: uuid.UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    incident = await _get_incident_or_404(db, incident_id)
+    await _assert_workspace_member(db, incident.workspace_id, user_id)
+
+    async def _safe_presigned(key: str | None) -> str | None:
+        if not key:
+            return None
+        try:
+            return await get_presigned_url(key)
+        except Exception:
+            logger.exception(
+                "Failed generating presigned URL for incident %s key %s",
+                incident_id,
+                key,
+            )
+            return None
+
+    transcript_url = await _safe_presigned(incident.transcript_s3_key)
+    return {
+        "audio_url": None,
+        "transcript_url": transcript_url,
+        "report_url": None,
+    }

@@ -18,6 +18,7 @@ type IncidentStore = {
   };
   connectionStatus: "connecting" | "connected" | "reconnecting" | "disconnected";
   setIncidentId: (incidentId: string | null) => void;
+  setTranscript: (lines: TranscriptLine[]) => void;
   addTranscriptLine: (line: Omit<TranscriptLine, "id"> & { id?: string }) => void;
   upsertActionItem: (item: ActionItem) => void;
   setSuspectFiles: (files: DeepDiveResult[]) => void;
@@ -44,17 +45,26 @@ const initialState = {
 export const useIncidentStore = create<IncidentStore>((set) => ({
   ...initialState,
   setIncidentId: (incidentId) => set({ incidentId }),
+  setTranscript: (lines) => set({ transcript: lines }),
   addTranscriptLine: (line) =>
     set((state) => ({
-      transcript: [
-        ...state.transcript,
-        {
-          id:
-            line.id ??
-            `${line.timestamp}-${line.speaker}-${state.transcript.length + 1}`,
-          ...line,
-        },
-      ],
+      transcript: state.transcript.some(
+        (existing) =>
+          existing.speaker === line.speaker &&
+          existing.text === line.text &&
+          existing.is_final === line.is_final &&
+          existing.timestamp === line.timestamp,
+      )
+        ? state.transcript
+        : [
+            ...state.transcript,
+            {
+              id:
+                line.id ??
+                `${line.timestamp}-${line.speaker}-${state.transcript.length + 1}`,
+              ...line,
+            },
+          ],
     })),
   upsertActionItem: (item) =>
     set((state) => {
