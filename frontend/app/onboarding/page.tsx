@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Github } from "lucide-react";
@@ -16,14 +16,13 @@ import { api } from "@/lib/api";
 import type { Workspace } from "@/types/api";
 import { toastError } from "@/lib/toast";
 
-export default function OnboardingPage() {
+function OnboardingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useSupabase();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [isConnectingGithub, setIsConnectingGithub] = useState(false);
   const [isConnectingJira, setIsConnectingJira] = useState(false);
-  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const autoCreateStartedRef = useRef(false);
 
   const workspaces = useWorkspaces();
@@ -49,7 +48,6 @@ export default function OnboardingPage() {
     }
 
     autoCreateStartedRef.current = true;
-    setIsCreatingWorkspace(true);
 
     const createWorkspace = async () => {
       const {
@@ -70,8 +68,6 @@ export default function OnboardingPage() {
       } catch {
         autoCreateStartedRef.current = false;
         toastError("Failed to create your workspace");
-      } finally {
-        setIsCreatingWorkspace(false);
       }
     };
 
@@ -235,6 +231,45 @@ export default function OnboardingPage() {
         </div>
       </main>
     </ProtectedPage>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <ProtectedPage>
+          <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(245,118,87,0.14),_transparent_28%),radial-gradient(circle_at_85%_18%,_rgba(0,180,170,0.12),_transparent_24%),linear-gradient(180deg,_#f7f3eb_0%,_#f2efe8_42%,_#ece9e1_100%)] text-slate-950">
+            <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6 md:px-10 lg:px-12">
+              <header className="mb-10 flex items-center justify-between gap-4 rounded-full border border-white/60 bg-white/55 px-4 py-3 backdrop-blur-xl md:px-6">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-10 w-10 animate-pulse rounded-2xl bg-slate-200" />
+                  <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                </div>
+                <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+              </header>
+              <section className="flex flex-1 items-center justify-center">
+                <div className="w-full max-w-lg">
+                  <div className="mb-8 flex flex-col items-center gap-3">
+                    <div className="h-10 w-64 animate-pulse rounded bg-slate-200" />
+                    <div className="h-10 w-56 animate-pulse rounded bg-slate-200" />
+                  </div>
+                  <Card className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/72 p-2 shadow-[0_28px_80px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+                    <div className="space-y-3 rounded-[1.6rem] border border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(248,245,238,0.94)_100%)] p-6 md:p-7">
+                      <div className="h-20 animate-pulse rounded-2xl bg-white/70" />
+                      <div className="h-20 animate-pulse rounded-2xl bg-white/70" />
+                      <div className="h-12 animate-pulse rounded-2xl bg-slate-200" />
+                    </div>
+                  </Card>
+                </div>
+              </section>
+            </div>
+          </main>
+        </ProtectedPage>
+      }
+    >
+      <OnboardingPageContent />
+    </Suspense>
   );
 }
 

@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +43,16 @@ class Settings(BaseSettings):
 
     # Frontend URL (for OAuth redirects back to the UI)
     frontend_url: str = "http://localhost:3000"
+    cors_origins: list[str] = ["http://localhost:3000"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        if value is None or value == "":
+            return ["http://localhost:3000"]
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
 
 settings = Settings()
