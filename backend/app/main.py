@@ -9,6 +9,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.routers import workspaces, incidents, integrations, tasks, deep_dive, ws
 # S3 artifacts router — disabled until AWS credentials are configured.
 # from app.routers import artifacts
@@ -113,7 +114,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 # allow_credentials=True is required for Supabase cookie-based sessions from the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
