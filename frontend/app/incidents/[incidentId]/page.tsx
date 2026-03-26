@@ -45,6 +45,7 @@ export default function IncidentRoomPage() {
   const activePanel = useUIStore((store) => store.activePanel);
   const setActivePanel = useUIStore((store) => store.setActivePanel);
   const [isDownloadingTranscript, setIsDownloadingTranscript] = useState(false);
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   const hasShownDeepDiveToastRef = useRef(false);
   const previousDeepDiveCountRef = useRef(0);
 
@@ -107,9 +108,10 @@ export default function IncidentRoomPage() {
 
     setIsDownloadingTranscript(true);
     try {
-      const { data } = await api.get<{ transcript_url: string | null }>(
-        `/api/incidents/${incidentId}/artifacts`,
-      );
+      const { data } = await api.get<{
+        transcript_url: string | null;
+        report_url: string | null;
+      }>(`/api/incidents/${incidentId}/artifacts`);
       if (!data.transcript_url) {
         toastError("Transcript download is not available");
         return;
@@ -120,6 +122,31 @@ export default function IncidentRoomPage() {
       toastError("Failed to download transcript");
     } finally {
       setIsDownloadingTranscript(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!incident.data?.report_s3_key) {
+      toastError("No incident report is available yet");
+      return;
+    }
+
+    setIsDownloadingReport(true);
+    try {
+      const { data } = await api.get<{
+        transcript_url: string | null;
+        report_url: string | null;
+      }>(`/api/incidents/${incidentId}/artifacts`);
+      if (!data.report_url) {
+        toastError("Report download is not available");
+        return;
+      }
+      window.open(data.report_url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Failed to download report", error);
+      toastError("Failed to download report");
+    } finally {
+      setIsDownloadingReport(false);
     }
   };
 
@@ -169,6 +196,18 @@ export default function IncidentRoomPage() {
                   >
                     <ArrowDownToLine className="mr-1.5 h-4 w-4" />
                     {isDownloadingTranscript ? "Preparing..." : "Transcript"}
+                  </Button>
+                ) : null}
+                {incident.data?.report_s3_key ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadReport}
+                    disabled={isDownloadingReport}
+                    className="rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white"
+                  >
+                    <ArrowDownToLine className="mr-1.5 h-4 w-4" />
+                    {isDownloadingReport ? "Preparing..." : "Report"}
                   </Button>
                 ) : null}
                 <Button

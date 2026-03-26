@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_maker
 from app.deps import get_db, get_current_user_id
 from app.models.action_item import ActionItem
+from app.models.deep_dive import DeepDiveResult
 from app.models.incident import Incident
 from app.services.event_logger import log_event
 from app.models.transcript import TranscriptChunk
@@ -21,7 +22,9 @@ from app.services.s3 import (
     delete_object,
     download_json,
     get_presigned_url,
+    incident_report_key,
     incident_transcript_key,
+    upload_text,
     upload_json,
 )
 from app.services.skribby import create_bot, detect_service, stop_bot, get_bot
@@ -223,6 +226,52 @@ async def _export_transcript_artifact(incident_id: str) -> None:
             )
 
 
+async def _export_report_artifact(incident_id: str) -> None:
+    """Background task — exports a markdown incident report to S3."""
+    async with async_session_maker() as db:
+        try:
+            incident = await _get_incident_or_404(db, uuid.UUID(incident_id))
+
+            chunks_result = await db.execute(
+                select(TranscriptChunk)
+                .where(TranscriptChunk.incident_id == uuid.UUID(incident_id))
+                .order_by(TranscriptChunk.start_ts.asc().nulls_last())
+            )
+            tasks_result = await db.execute(
+                select(ActionItem)
+                .where(ActionItem.incident_id == uuid.UUID(incident_id))
+                .order_by(ActionItem.proposed_at.asc())
+            )
+            deep_dive_result = await db.execute(
+                select(DeepDiveResult)
+                .where(DeepDiveResult.incident_id == uuid.UUID(incident_id))
+                .order_by(DeepDiveResult.rank.asc(), DeepDiveResult.created_at.asc())
+            )
+
+            report = _build_report(
+                incident=incident,
+                chunks=chunks_result.scalars().all(),
+                tasks=tasks_result.scalars().all(),
+                dd_rows=deep_dive_result.scalars().all(),
+            )
+
+            report_key = incident_report_key(incident_id)
+            await upload_text(report_key, report)
+            incident.report_s3_key = report_key
+            await db.commit()
+            logger.info(
+                "Report artifact exported for incident %s to s3://%s",
+                incident_id,
+                report_key,
+            )
+        except Exception as exc:
+            logger.exception(
+                "_export_report_artifact failed for incident %s: %s",
+                incident_id,
+                exc,
+            )
+
+
 # ── Endpoints ──
 
 @router.post("/incidents", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
@@ -363,6 +412,8 @@ async def update_incident(
                     )
 
             asyncio.create_task(_export_transcript_artifact(str(incident_id)))
+            if body.status == "resolved" and previous_status != "resolved":
+                asyncio.create_task(_export_report_artifact(str(incident_id)))
 
     await db.commit()
     return IncidentResponse.model_validate(incident)
@@ -432,10 +483,11 @@ async def get_artifacts(
             return None
 
     transcript_url = await _safe_presigned(incident.transcript_s3_key)
+    report_url = await _safe_presigned(incident.report_s3_key)
     return {
         "audio_url": None,
         "transcript_url": transcript_url,
-        "report_url": None,
+        "report_url": report_url,
     }
 
 
