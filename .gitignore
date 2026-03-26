@@ -1,6 +1,4 @@
 # Environment files — never commit secrets
-.env
-.env.local
 .env.*.local
 backend/.env
 frontend/.env.local
@@ -10,18 +8,31 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-venv/
-.venv/
+backend/venv/
+backend/.venv/
 *.egg-info/
 dist/
 build/
 
 # Node / Next.js
-node_modules/
-.next/
-out/
 frontend/.next/
 frontend/node_modules/
+frontend/out/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+frontend/coverage/
+*.tsbuildinfo
+frontend/.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.pem
 
 # IDE
 .vscode/
@@ -41,7 +52,5 @@ backend/alembic/versions/__pycache__/
 .coverage
 htmlcov/
 .pytest_cache/
-docs/
 
-AGENTS.md
-FILE_STRUCTURE.md
+docs/
